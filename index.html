@@ -1,0 +1,814 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1620">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>GMDSS Drive Quiz</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one-screen night-bridge console — status strip, big question readout, transcript, thumb-sized controls at the bottom. Deliberately single dark theme for night driving. */
+:root{
+  --bg:#0b1620; --panel:#112230; --panel2:#163044; --line:#22394c;
+  --fg:#e8eff4; --muted:#8ea4b5; --accent:#ff7a3d; --accent-ink:#1a0d05;
+  --ok:#3fd193; --bad:#ff6168; --warn:#ffc04d;
+  --display:'Barlow Condensed','Arial Narrow',system-ui,sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:16px;line-height:1.45;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:720px;margin:0 auto;padding:12px 16px 16px;min-height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:14px}
+h1{font-family:var(--display);font-weight:700;font-size:40px;letter-spacing:.02em;line-height:1;margin:0;text-wrap:balance}
+h1 span{color:var(--accent)}
+.lede{color:var(--muted);margin:0;max-width:60ch}
+.eyebrow{font-family:var(--display);font-weight:600;font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+button{font:inherit;color:inherit;cursor:pointer;border:0}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+
+/* setup */
+.howto{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.howto li{display:grid;grid-template-columns:90px 1fr;gap:12px;align-items:baseline;padding:10px 0;border-top:1px solid var(--line)}
+.howto b{font-family:var(--display);font-size:20px;letter-spacing:.04em;color:var(--accent);text-transform:uppercase}
+.settings{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.field{display:flex;flex-direction:column;gap:6px;min-width:0}
+.field label{font-size:13px;color:var(--muted)}
+select,input[type=text]{background:var(--panel);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;width:100%;box-sizing:border-box}
+.check{display:flex;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+.check input{width:22px;height:22px;accent-color:var(--accent)}
+.start{background:var(--accent);color:var(--accent-ink);font-family:var(--display);font-weight:700;font-size:30px;letter-spacing:.06em;text-transform:uppercase;border-radius:16px;min-height:84px;width:100%}
+.note{font-size:14px;color:var(--muted);margin:0}
+.note strong{color:var(--fg);font-weight:600}
+.record{display:flex;gap:18px;flex-wrap:wrap;font-family:var(--display);font-size:18px;color:var(--muted)}
+.record b{color:var(--fg);font-size:24px;font-variant-numeric:tabular-nums}
+
+/* quiz */
+.strip{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.counts{display:flex;gap:14px;font-family:var(--display);font-size:20px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.counts .r{color:var(--ok)} .counts .w{color:var(--bad)}
+.pill{display:inline-flex;align-items:center;gap:8px;font-family:var(--display);font-weight:600;font-size:18px;letter-spacing:.08em;text-transform:uppercase;padding:6px 14px;border-radius:999px;background:var(--panel2);color:var(--muted)}
+.pill i{width:10px;height:10px;border-radius:50%;background:currentColor;display:block}
+.pill[data-s=listening]{color:var(--ok)} .pill[data-s=listening] i{animation:pulse 1.2s infinite}
+.pill[data-s=speaking]{color:var(--accent)}
+.pill[data-s=grading]{color:var(--warn)}
+.pill[data-s=paused],.pill[data-s=stopped]{color:var(--bad)}
+@keyframes pulse{50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pill i{animation:none!important}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.src{font-family:var(--display);font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.src[data-k=retry]{color:var(--warn)} .src[data-k=fresh]{color:var(--accent)}
+.q{font-family:var(--display);font-weight:600;font-size:clamp(28px,7vw,42px);line-height:1.12;margin:0;text-wrap:balance}
+.heard{min-height:3em;font-size:20px;color:var(--fg);overflow-wrap:anywhere}
+.heard .part{color:var(--muted)}
+.heard:empty::before{content:attr(data-hint);color:var(--muted);font-size:16px}
+.verdict{border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}
+.verdict[data-v=correct]{background:color-mix(in srgb,var(--ok) 16%,var(--panel))}
+.verdict[data-v=wrong],.verdict[data-v=partial]{background:color-mix(in srgb,var(--bad) 14%,var(--panel))}
+.verdict .vh{font-family:var(--display);font-weight:700;font-size:26px;letter-spacing:.04em;text-transform:uppercase}
+.verdict[data-v=correct] .vh{color:var(--ok)} .verdict[data-v=wrong] .vh,.verdict[data-v=partial] .vh{color:var(--bad)}
+.verdict .ans{white-space:pre-wrap;color:var(--fg)}
+.controls{margin-top:auto;display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.ctl{background:var(--panel2);border:1px solid var(--line);border-radius:16px;min-height:76px;font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.05em;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.05}
+.ctl small{font-family:var(--body);font-size:12px;letter-spacing:0;text-transform:none;color:var(--muted);font-weight:400;margin-top:4px}
+.ctl.main{background:var(--accent);color:var(--accent-ink);border-color:transparent}
+.ctl.main small{color:var(--accent-ink);opacity:.75}
+.typed{display:flex;gap:8px}
+.typed button{background:var(--accent);color:var(--accent-ink);border-radius:10px;padding:0 18px;font-weight:600}
+.foot{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.link{background:none;color:var(--muted);text-decoration:underline;padding:4px 0}
+.overlay{position:fixed;inset:0;background:color-mix(in srgb,var(--bg) 88%,transparent);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:24px;text-align:center;z-index:5}
+.overlay .big{font-family:var(--display);font-weight:700;font-size:44px;line-height:1;color:var(--accent);text-transform:uppercase;letter-spacing:.04em}
+.overlay p{max-width:30ch;color:var(--muted);margin:0}
+.smart{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;display:block}
+.smart summary{cursor:pointer;font-weight:600}
+.smart[open]{display:flex;flex-direction:column;gap:10px}
+.smart #keyState{color:var(--muted);font-weight:400}
+.tag{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-left:auto;white-space:nowrap}
+input[type=password]{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;width:100%;box-sizing:border-box}
+</style>
+<style>body{margin:0} .wrap{padding-top:max(12px,env(safe-area-inset-top))}</style>
+</head>
+<body>
+<div class="wrap" id="setup">
+  <div class="eyebrow">SRC · GMDSS · VHF</div>
+  <h1>GMDSS <span>Drive</span> Quiz</h1>
+  <p class="lede">Questions from your GMDSS manual and Special Responses slides, read aloud. Answer out loud. Missed questions come back a few questions later until you get them right.</p>
+  <ul class="howto">
+    <li><b>Answer</b><span>Speak after the tick. Finish by pausing, or say <strong>“over”</strong> like on the radio.</span></li>
+    <li><b>Say again</b><span>Hear the question again.</span></li>
+    <li><b>Skip</b><span>Hear the answer. It comes back later.</span></li>
+    <li><b>Pause</b><span>Stops asking. Say <strong>“continue”</strong> to carry on.</span></li>
+  </ul>
+  <div class="settings">
+    <div class="field"><label for="topic">Topics</label>
+      <select id="topic">
+        <option value="all">Everything</option>
+        <option value="proc">Calls &amp; procedures</option>
+        <option value="chan">Channels, frequencies &amp; ranges</option>
+        <option value="equip">EPIRB, SART, NAVTEX, AIS &amp; radio</option>
+        <option value="rules">System, rules &amp; phrases</option>
+      </select></div>
+    <div class="field"><label for="rate">Reading speed</label>
+      <select id="rate"><option value="0.85">Slow</option><option value="1" selected>Normal</option><option value="1.15">Fast</option></select></div>
+    <label class="check" for="optRecite"><input type="checkbox" id="optRecite" checked> Include “recite the full call” questions</label>
+    <label class="check" for="optFresh"><input type="checkbox" id="optFresh" checked> Mix in new questions written from the manual <span class="tag">needs key</span></label>
+  </div>
+  <details class="smart" id="smart">
+    <summary>Smarter marking with Claude <span id="keyState">· off</span></summary>
+    <p class="note">Without a key, the app checks your answer for the key words and numbers. With your own Anthropic API key, Claude marks answers in your own words, checks recited calls properly and writes new questions from the manual. The key stays on this phone only. Each answer costs a fraction of a cent. Get a key at console.anthropic.com.</p>
+    <div class="field"><label for="apiKey">Anthropic API key</label><input type="password" id="apiKey" placeholder="sk-ant-…" autocomplete="off"></div>
+    <div class="field"><label for="model">Model</label><input type="text" id="model" value="claude-haiku-4-5" autocomplete="off"></div>
+    <button class="link" id="testKey" type="button">Test key</button> <span class="note" id="keyMsg"></span>
+  </details>
+  <div class="record" id="record" hidden></div>
+  <button class="start" id="startBtn">Start quiz</button>
+  <p class="note" id="setupNote"><strong>Set it up before you drive.</strong> After you tap Start, everything works by voice. The first time, allow the microphone. Keep the screen on and this app open.</p>
+</div>
+
+<div class="wrap" id="quiz" hidden>
+  <div class="strip">
+    <span class="pill" id="pill" data-s="speaking"><i></i><span id="pillText">Reading</span></span>
+    <div class="counts"><span>Q <b id="nQ">0</b></span><span class="r">✓ <b id="nR">0</b></span><span class="w">✗ <b id="nW">0</b></span><span>Retry <b id="nRetry">0</b></span></div>
+  </div>
+  <div class="card">
+    <div class="src" id="src">Question</div>
+    <p class="q" id="qText"></p>
+  </div>
+  <div class="card">
+    <div class="src">You said</div>
+    <div class="heard" id="heard" data-hint="Listening for your answer…"></div>
+    <form class="typed" id="typed" hidden><input type="text" id="typedIn" placeholder="Type your answer" autocomplete="off"><button type="submit">Send</button></form>
+  </div>
+  <div class="verdict" id="verdict" hidden><div class="vh" id="vHead"></div><div class="ans" id="vText"></div></div>
+  <div class="controls">
+    <button class="ctl" id="againBtn">Say again<small>“say again”</small></button>
+    <button class="ctl main" id="pauseBtn">Pause<small>“pause”</small></button>
+    <button class="ctl" id="skipBtn">Skip<small>“skip”</small></button>
+  </div>
+  <div class="foot"><span id="voiceInfo"></span><button class="link" id="endBtn">End session</button></div>
+</div>
+
+<script>
+// t: topic (proc = calls & procedures, chan = channels/frequencies/ranges, equip = EPIRB/SART/NAVTEX/AIS/radio, rules = system, rules & phrases)
+// k: local answer keys — groups split by "|" (all needed), alternatives split by "/". p: recite-the-call question.
+const BANK_RAW = [
+["rules","What does GMDSS stand for?","Global Maritime Distress and Safety System.","global|distress|safety"],
+["rules","What does SRC stand for, in the SRC certificate?","Short Range Certificate.","short range"],
+["rules","In which year did the IMO adopt the GMDSS?","1988.","1988"],
+["rules","In which year was the first known use of radio to save lives at sea?","1899.","1899"],
+["rules","What was the target year for full GMDSS implementation?","1999.","1999"],
+["rules","Which GMDSS sea area is the SRC certificate valid for?","Area A1 only.","a1/a 1"],
+["rules","What is the main purpose of the GMDSS?","To automate and improve emergency communications at sea, alerting ships, coast stations and search and rescue authorities to a vessel in distress.","alert/distress/emergency/rescue"],
+["rules","Is GPS part of the GMDSS?","No. GPS is not part of GMDSS, but it provides the most accurate position for it.","no/not/isn't"],
+["rules","What does DSC stand for?","Digital Selective Calling.","digital|selective"],
+["rules","What does EPIRB stand for?","Emergency Position Indicating Radio Beacon.","emergency|position|beacon"],
+["rules","What does SART stand for?","Search and Rescue Radar Transponder.","search|rescue|transponder"],
+["rules","What does MSI stand for?","Maritime Safety Information.","maritime safety information/safety information"],
+["rules","What does ITU stand for, and what does it do?","International Telecommunication Union. It regulates global radio transmissions.","telecommunication"],
+["rules","What does SOLAS stand for?","Safety of Life at Sea.","life at sea"],
+["rules","What does IMO stand for?","International Maritime Organization.","maritime organi"],
+["rules","In which year was the IMO established?","1948. It began its activities in 1958.","1948"],
+["rules","What is MMSI short for?","Maritime Mobile Service Identity.","mobile|service|identit"],
+["rules","Small vessels that don't need full GMDSS equipment must carry which two items?","A VHF marine radio and an EPIRB.","vhf/radio|epirb/e perb/beacon"],
+["rules","What does the word Limited refer to in the limited radiotelephone service?","The transmission power and the control over channel and frequency selection.","power/frequenc/channel"],
+["rules","How is GMDSS sea area A1 defined?","Within radiotelephone coverage of at least one VHF coast station with DSC available.","vhf"],
+["rules","Roughly how far offshore does area A1 extend?","About 20 to 30 miles.","20/30"],
+["rules","How is GMDSS sea area A2 defined?","Within coverage of an MF coast station with DSC, about 50 to 100 miles offshore.","mf/medium/50/100"],
+["rules","How is GMDSS sea area A3 defined?","Within Inmarsat satellite coverage, between 70 degrees north and 70 degrees south, excluding A1 and A2.","inmarsat/satellite/70"],
+["rules","How is GMDSS sea area A4 defined?","All remaining sea areas, the polar regions outside Inmarsat coverage.","polar/pole/remaining/rest/arctic"],
+["rules","A GMDSS vessel in area A1 must keep continuous watch on which channel?","Channel 70, the DSC channel.","70"],
+["rules","Name the equipment required for a vessel in area A1.","VHF equipment, a VHF EPIRB or satellite EPIRB, an MSI receiver, and a portable radio.","vhf|epirb/e perb/beacon"],
+["rules","A vessel in A1 but outside NAVTEX coverage needs other equipment to receive what?","Maritime safety information, on HF, Telex or Inmarsat.","safety information/msi/m s i"],
+["rules","Who must check and sign the GMDSS radio log book every day?","The captain.","captain/master/skipper"],
+["rules","Which log are small vessels such as yachts required to keep?","The ship's log only. It serves as a general log and includes the wireless log.","log"],
+["rules","Admiralty List of Radio Signals volume 5 covers what?","The GMDSS.","gmdss/g m d s s"],
+["rules","Admiralty List of Radio Signals volume 1 is the list of what?","Coast stations.","coast"],
+["rules","A ship's radio station is classified as what kind of station?","A mobile station.","mobile"],
+["rules","Radiotelephony-only operators use a set where one channel selector sets both transmit and receive frequency. What is that set called?","A transceiver.","transceiver"],
+["chan","VHF communication works by what kind of path between the two antennas?","Line of sight.","sight"],
+["chan","What is the single biggest factor in VHF range?","Antenna height.","antenna|height/high"],
+["chan","What is the typical VHF range of a ship?","25 miles.","25"],
+["chan","What is the typical VHF range between two yachts?","15 miles.","15"],
+["chan","What is the typical range between two handheld VHF radios?","5 miles.","5"],
+["chan","What is the typical range from a yacht with a 9 metre antenna to a shore station?","35 miles.","35"],
+["chan","What is the typical range from a ship with a 90 metre antenna to a shore station?","60 miles.","60"],
+["chan","The squelch affects which range, transmission or reception?","Reception range only.","recep/receiv"],
+["chan","Name three things VHF transmission range depends on.","Antenna height, transmission power, and day or night. Squelch and atmospheric conditions also affect reception.","antenna/height/power/strength/day/night/atmospher"],
+["rules","What is the maximum length of a conversation on channel 16?","One minute.","1 minute/60 second/a minute/1 min"],
+["rules","What is the maximum length of a contact check on channel 16?","10 seconds.","10"],
+["rules","At what interval may you call a station again on channel 16?","Every 2 minutes.","2"],
+["rules","Channel 16 is reserved for which three kinds of communication?","Distress, urgency and safety.","distress|urgen|safety"],
+["chan","What is the frequency band of the maritime VHF radiotelephone service?","156 to 174 megahertz.","156|174"],
+["chan","How many VHF marine channels are there?","59 channels.","59"],
+["chan","What is the spacing between VHF marine channels?","25 kilohertz.","25"],
+["chan","What is the frequency range of the VHF band in general?","30 to 300 megahertz.","30|300"],
+["chan","What is the frequency range of the MF band?","300 to 3000 kilohertz.","300|3000/3 000/3 thousand"],
+["chan","What is the frequency range of the HF band?","3 to 30 megahertz.","3|30"],
+["chan","What frequency does a radar SART transmit on?","9 gigahertz, in the X band.","9/x band"],
+["chan","Which band does Inmarsat use?","The L band, around 1.6 gigahertz.","l band/l-band/1600/1.6/1 point 6"],
+["chan","What type of modulation does marine VHF use?","FM, frequency modulation.","fm/f m/frequency modulation"],
+["chan","What is the modulation class of VHF speech channels?","G3E, also called F3E.","g3e/g 3 e/f3e/f 3 e/g 3e/f 3e"],
+["chan","What is the modulation class used by DSC on channel 70?","G2B.","g2b/g 2 b/g 2b"],
+["chan","In FM, how far is the carrier shifted each side of the centre frequency?","12.5 kilohertz each way, so the signal takes 25 kilohertz.","12.5/12 point 5/12 and a half/12 5"],
+["chan","What is simplex communication?","One frequency used for both transmitting and receiving, so you talk and listen alternately.","1 frequenc/single frequenc/same frequenc/one frequenc"],
+["chan","What is duplex communication?","Two different frequencies, one to transmit and one to receive, so both can talk at once.","2 frequenc/two frequenc|"],
+["chan","What is semi-duplex communication?","Simplex working on one frequency of a duplex channel, for example between a small boat and a shore station.","duplex"],
+["chan","What is the frequency of channel 16?","156.8 megahertz.","156.8/156 point 8/156 8"],
+["chan","What is the frequency of channel 70?","156.525 megahertz.","525"],
+["chan","What is the first-choice channel for ship-to-ship and ship-to-aircraft search and rescue?","Channel 6.","6"],
+["chan","What is the second-choice channel for inter-ship communication?","Channel 8.","8"],
+["chan","Which channel is used in Israel for vessel movement, and by the Israeli Navy?","Channel 11.","11"],
+["chan","Which channel is the bridge-to-bridge safety channel?","Channel 13.","13"],
+["chan","Which channels are used for port operations?","Channels 12 and 14.","12|14"],
+["chan","Which channels are used for internal communication on board at 1 watt?","Channels 15 and 17.","15|17"],
+["chan","Which channels are the public correspondence duplex channels?","24, 25, 26 and 27.","24/25/26/27"],
+["chan","Which channels are used between fishing vessels?","Channels 67 and 73.","67|73"],
+["chan","Which two channels act as guard bands for channel 16?","Channels 75 and 76.","75|76"],
+["chan","Which channels are used for AIS?","AIS 1 and AIS 2, which are channels 87B and 88B.","87/88/ais 1/ais1"],
+["chan","What is the frequency of AIS 1?","161.975 megahertz.","975"],
+["equip","What does the Dual Watch switch do?","It listens on channel 16 plus one more channel. Channel 16 breaks in whenever it receives.","16"],
+["equip","What is the minimum information sent in a DSC distress alert?","The vessel's MMSI.","mmsi/m m s i"],
+["equip","What are the high and low transmit powers on a fixed marine VHF?","25 watts high and 1 watt low.","25|1"],
+["equip","The boat's batteries should run the VHF at high power for how many hours?","6 hours.","6"],
+["equip","How long can a handheld VHF transmit on one battery?","40 minutes to an hour on the air.","40/hour"],
+["equip","How long must a handheld VHF last in listening mode?","At least 8 hours.","8"],
+["equip","How waterproof must a handheld VHF be?","To 1 metre depth for 5 minutes.","1 met|5"],
+["equip","What are a handheld VHF's power levels?","Low 0.25 watt, high at least 1 watt.","0.25/quarter/point 25/0 25|1"],
+["equip","What type of battery does a GMDSS handheld use, and what spare must it have?","A rechargeable nickel-cadmium battery, plus a spare lithium battery.","nickel/cadmium/nicad/lithium"],
+["rules","How many digits are in an MMSI?","9 digits.","9"],
+["rules","What do the MID digits in an MMSI show?","The country the ship belongs to. MID means Maritime Identification Digits.","country/nation/flag/state"],
+["rules","What are Israel's MID digits?","428.","428"],
+["rules","An MMSI starting with two zeros belongs to what?","A coast station.","coast/shore"],
+["rules","An MMSI starting with a single zero belongs to what?","A group of ships.","group"],
+["rules","An MMSI starting with 111 belongs to what?","A search and rescue aircraft fitted with DSC.","aircraft/plane/airplane"],
+["rules","An MMSI starting with 970 belongs to what?","An AIS SART.","sart"],
+["rules","An MMSI starting with 972 belongs to what?","A man overboard personal device.","overboard/mob/personal/m o b"],
+["rules","An MMSI starting with 974 belongs to what?","An AIS EPIRB.","epirb/e perb/beacon"],
+["rules","An MMSI starting with 99 belongs to what?","A navigation aid, such as a lightship.","nav/aid/light"],
+["rules","After the first installation, who may change a DSC radio's MMSI?","Only a qualified technician.","technician/dealer/professional/installer/qualified"],
+["rules","Does it cost money to get an MMSI?","No. It is issued free of charge by the licensing authority.","no/free/not"],
+["rules","What are the call sign prefixes for Israel?","4X and 4Y.","4x/4 x/4y/4 y"],
+["rules","What do the first two characters of a call sign identify?","The country.","country/nation"],
+["proc","How is a full call made on channel 16?","The called station three times, then This is, and your own name three times.","3/three"],
+["proc","How is a short call made?","The called station once, then This is, and your own name twice.","1/once|2/twice"],
+["proc","When should you use a short call?","After first contact is made, and in busy areas where the channel is loaded.","contact/busy/crowd/load/traffic"],
+["proc","In a ship-to-ship call, who chooses the working channel?","The ship being called.","called/being called/receiv/other"],
+["proc","In a call with a coast station, who chooses the working channel?","The coast station.","coast/shore"],
+["rules","What does OUT mean at the end of a transmission?","End of the conversation. No reply is expected.","end/finish/no reply/no response/done/close"],
+["rules","What does STANDBY mean in radio procedure?","Wait, on the same channel or the one you were moved to.","wait/stay/hold"],
+["rules","What does UP mean in radio procedure?","Confirming the move to the agreed channel.","channel/frequenc/move/switch/agreed"],
+["rules","What is the first step in any distress, urgency or safety transmission?","Send a digital alert on DSC, channel 70.","dsc/70/digital"],
+["rules","What does the procedure word CORRECTION mean?","I am correcting a word or letter I just sent.","correct/mistake/error/wrong"],
+["rules","What does the procedure phrase I SPELL mean?","I am switching to phonetic spelling.","phonetic/spell/letter"],
+["rules","Which phrase asks the other station to repeat something you missed?","Say again.","say again/repeat"],
+["rules","Which phrase confirms you received a message?","Received, or Roger.","received/roger/copy"],
+["rules","What does IN FIGURES mean?","What follows is a number, read out digit by digit.","number/figure/digit"],
+["rules","What does STATION CALLING mean?","It asks: which station is calling me?","who/which/calling/identif"],
+["rules","Readability is reported on a scale of 1 to what?","1 to 5.","5"],
+["rules","On the readability scale, what does 5 mean?","Excellent.","excellent/perfect/loud and clear/very good"],
+["rules","On the readability scale, what does 3 mean?","Fair.","fair/okay/ok/medium/average"],
+["rules","How do you ask for a radio check?","How do you read me?","how do you read/read me/radio check"],
+["proc","For internal communication on board, which channels and power are used?","Channels 15 and 17, low power.","15/17/low/1 watt"],
+["proc","On board, how is the main station identified?","The vessel name plus the word Control, for example Tami Control.","control"],
+["proc","On board, how is a sub-station identified?","The vessel name plus one phonetic letter, for example Tami Alpha.","letter/alpha/bravo/phonetic"],
+["rules","List the four communication priorities in order.","Distress, urgency, safety, routine.","distress|urgen|safety|routine"],
+["rules","Which word starts a distress call?","MAYDAY.","mayday/may day/mayde/m'aider"],
+["rules","Which word starts an urgency call?","PANPAN.","pan/pon"],
+["rules","Which word starts a safety call?","SECURITE.","securit/security/secure/say cure/sicuri/securi"],
+["rules","What has the lowest priority of all radio traffic?","Personal and private communication of crew members.","personal/private/crew"],
+["rules","When is a MAYDAY sent?","When there is immediate danger to the vessel or to life and immediate help is needed.","danger|life/vessel/boat|immediate"],
+["rules","When is a PANPAN sent?","For an urgent situation affecting the safety of a vessel or person, without immediate danger to life, for example breakdown, medical help or evacuation.","urgen/safety/breakdown/malfunction/medical/no danger/not life"],
+["rules","What is a SECURITE message used for?","Safety of navigation: navigational warnings and weather warnings.","navigat/weather/meteorolog"],
+["rules","Give three situations for a PANPAN.","A vessel malfunction, a need for medical advice or assistance, or a need for evacuation.","malfunction/breakdown/engine/medic/evacuat"],
+["rules","What happens on channel 16 once a distress message has been sent?","Radio silence. Only distress traffic is allowed.","silen"],
+["rules","Is it mandatory to acknowledge a distress call you hear?","Yes. You must acknowledge, make contact and report.","yes/must/mandatory"],
+["rules","After acknowledging a distress message, what must you transmit?","Your estimated time of arrival at the scene.","eta/time of arrival/arrival"],
+["rules","How should a distress message be spoken?","Clearly and at dictation speed, to all stations.","clear/slow/dictation"],
+["equip","If a DSC distress alert is not acknowledged, how often is it repeated automatically?","Every 3.5 to 4.5 minutes.","3.5/4.5/3 point 5/4 point 5/4/3 and a half"],
+["equip","Do small vessels acknowledge a DSC distress alert?","No. Small vessels do not acknowledge DSC distress alerts.","no/not/don't/do not"],
+["proc","After sending the DSC distress alert, what do you do next?","Switch to channel 16, check power is 25 watts, and send the distress call and message by voice.","16"],
+["equip","How long do you hold the distress button to send a DSC alert?","5 seconds.","5"],
+["equip","A quick DSC alert, without choosing the cause, sends what nature of distress?","Undesignated.","undesignat/un designat/not designat/unspecified"],
+["equip","Name four of the distress natures you can choose on a DSC radio.","Sinking, collision, fire and explosion, disabled and adrift, listing and capsizing, flooding, grounding, piracy, abandoning, man overboard.","sink/collision/fire/adrift/capsiz/flood/ground/pira/abandon/overboard/listing"],
+["equip","Describe the steps to send a full DSC distress alert.","Menu, Distress setting, choose the nature of distress, check position and time, then hold the distress button for 5 seconds.","menu/nature/cause|5"],
+["proc","When you abandon ship, how should the EPIRB be set up?","Activated, in the water, tied to the life raft.","water/float|raft/tie/attach"],
+["proc","When you abandon ship, how should the SART be set up?","Activated, and mounted as high as possible on the raft.","high"],
+["proc","When you abandon ship, what do you take for voice communication?","A waterproof portable VHF on channel 16, high power, with a spare battery.","portable/handheld|16"],
+["proc","Give four situations where you would send a MAYDAY RELAY.","When the vessel in distress can't transmit, when a distress call is not answered, when a broken distress call is then lost, or when the vessel in distress, a coast station or the station controlling the distress asks you to.","not answered/unanswered/no answer/can't/cannot/lost/request/ask"],
+["proc","What words start a Mayday relay?","MAYDAY RELAY, three times.","relay"],
+["proc","Who should a Mayday relay go to first, if in range?","A coast station.","coast/shore/rcc/rescue"],
+["proc","In a Mayday relay, which two words mark the start and end of the original message?","Quote and Unquote.","quote"],
+["proc","Who may use SEELONCE MAYDAY?","The vessel in distress or the station controlling the distress.","distress|control/coordinat/charge/supervis/manag/vessel"],
+["proc","Who uses SEELONCE DISTRESS?","Any other station near the distress, to silence interference.","other/any/third/near/vicinity"],
+["proc","What does PRUDONCE mean?","Restricted working may resume on channel 16, although the distress is not yet over.","restrict/careful/limit/caution"],
+["proc","What does SEELONCE FEENEE mean?","The distress is over and normal working may resume on channel 16.","end/finish/over/normal/resume/complete"],
+["proc","Who ends a distress event?","The station controlling the distress.","control/coordinat/charge/supervis/manag"],
+["proc","What do you say to a vessel offering help that you no longer need?","I am being assisted, proceed with your voyage. Out.","assist|proceed/continue"],
+["proc","You sent a false DSC distress alert. What do you do?","Switch the radio off to stop the alert, switch it on, and on channel 16 tell all stations to cancel the false alert.","off/cancel|16/all stations"],
+["rules","Is a vessel penalised for a false alert it has cancelled?","No. A cancelled false alert will not be penalised.","no/not"],
+["proc","What does MEDICO mean in a PANPAN call?","Medical advice or assistance is needed.","medical"],
+["proc","Name four things to include in a MEDICO message.","Gender, age, body temperature, blood pressure, condition and what happened, action taken and medication given.","age/gender|temp/pressure/medic/treat"],
+["proc","Which words open and close the body of a medico message?","Medico message begins, and Medico message ends.","begin|end"],
+["proc","An urgency call made to all stations must be ___ when the situation ends.","Cancelled.","cancel"],
+["proc","You're not yet in danger but the situation may get worse. What can you ask a coast station to do?","Stay on standby.","standby/stand by"],
+["proc","Name three typical hazards announced in a SECURITE navigation warning.","A floating buoy, a log, a container, a barrel or a mine.","buoy/log/container/barrel/mine"],
+["proc","A SECURITE call ends with which word?","Out.","out"],
+["proc","After the SECURITE call on 16, where is the rest of the message sent?","On a working channel.","working/another channel/other channel"],
+["proc","What does TANGO ROMEO mean?","A transit report: voyage details sent when leaving or entering port.","transit/voyage/travel/trip/route|"],
+["proc","Name four details in a Tango Romeo report.","Vessel name, port of departure, stopover, destination, and persons on board.","port/destination/persons/name/departure"],
+["proc","What does TANGO LIMA mean?","A traffic list, broadcast by a coast station.","traffic"],
+["proc","On which channel is a coast station traffic list read?","Channel 25, after the first call on 16.","25"],
+["proc","A coast station charges a minimum of how many minutes for a radio telephone call?","3 minutes.","3"],
+["proc","In a routine DSC call, who selects the working channel?","The calling station.","calling/caller/me/sender/i do"],
+["equip","How many dots does a SART paint on a radar screen?","12 dots.","12"],
+["equip","On a radar showing a SART, which dot marks the raft?","The dot closest to the centre of the screen.","clos/near/first|centre/center/middle"],
+["equip","At about 1 mile, what do the SART dots turn into?","Complete circles, with the raft at the centre.","circle"],
+["equip","What is the initial detection range of a SART by a ship's radar?","8 to 10 miles.","8/10"],
+["equip","What is the SART detection range from a search aircraft?","Up to 40 miles.","40"],
+["equip","How long does a SART battery last on standby?","96 hours, which is 4 days.","96/4 day"],
+["equip","How long does a SART battery last while transmitting?","8 hours.","8"],
+["equip","What light shows on a SART in standby, and when it is transmitting?","Yellow on standby, green plus a sound when transmitting.","yellow|green"],
+["equip","SARTs are mandatory in lifeboats of ships over what tonnage?","300 tons.","300"],
+["equip","Why shouldn't a SART be used together with a passive radar reflector?","Because of interference.","interfer"],
+["equip","What is the most important check on a SART or EPIRB?","A physical inspection of its integrity.","physical/visual/integrity/look"],
+["equip","How do you test a SART?","Press the switch down and turn right to Test. A light comes on and you hear a sound.","test|down/turn/press"],
+["equip","On which two frequencies does an EPIRB transmit?","406 and 121.5 megahertz.","406|121"],
+["equip","How often does a 406 EPIRB transmit a burst?","Half a second every 50 seconds, at 5 watts.","50"],
+["equip","What is the difference between a Category 1 and Category 2 EPIRB?","Category 1 floats free and activates automatically. Category 2 is activated manually.","automatic|manual"],
+["equip","Once activated, an EPIRB battery must last at least how long?","48 hours.","48"],
+["equip","If it is never used, how often is the EPIRB battery replaced?","Every 5 years.","5"],
+["equip","According to the manual, at what depth does the hydrostatic release free the EPIRB?","75 centimetres.","75"],
+["equip","Does an EPIRB make a sound when it is homing?","No.","no/not/doesn't"],
+["equip","How does the LEOSAR system find the beacon's position, and how accurately?","By the Doppler effect, to about 2 to 5 kilometres.","doppler"],
+["equip","At what altitude do LEOSAR satellites orbit?","About 1000 kilometres, orbiting every 100 minutes.","1000/1 000/thousand"],
+["equip","At what altitude do GEOSAR satellites orbit?","36,000 kilometres, above the equator.","36"],
+["equip","At what altitude do MEOSAR satellites orbit?","Between 19,000 and 24,000 kilometres.","19/24"],
+["equip","Which navigation satellite constellations carry the MEOSAR payloads?","GPS, Galileo and GLONASS.","gps/g p s/galileo/glonass"],
+["equip","How much bigger is the MEO footprint than the LEO footprint?","More than 7 times larger.","7"],
+["equip","How many MEOSAR satellites must be visible from anywhere on earth at any time?","At least 4.","4"],
+["equip","What does LUT stand for in the Cospas-Sarsat chain?","Local User Terminal, the ground station that calculates the beacon's position.","local user terminal/user terminal/ground station"],
+["equip","What does MCC stand for?","Mission Control Centre.","mission control"],
+["equip","What does RCC stand for?","Rescue Coordination Centre.","rescue coordinat"],
+["equip","What does OSC stand for?","On Scene Commander.","scene|command"],
+["equip","Name two things the RCC does after an EPIRB alert.","It tries to contact the vessel, and broadcasts a distress message on NAVTEX.","contact/call|navtex/broadcast"],
+["equip","What does Sarsat stand for?","Search And Rescue Satellite-Aided Tracking.","satellite|track"],
+["equip","What is a GPIRB?","An EPIRB with GPS, sending the precise position with its alert.","gps/g p s"],
+["equip","What is a PLB?","A Personal Locator Beacon, for use on land, sea and air.","personal locator/personal"],
+["equip","What is an ELT?","An Emergency Locator Transmitter, carried on aircraft.","aircraft/plane/emergency locator"],
+["equip","Where do you register a 406 EPIRB online?","406registration.com.","406"],
+["equip","Since which date must every newly installed EPIRB include AIS and GNSS?","1 July 2022.","2022"],
+["equip","How many geostationary satellites does Inmarsat use, at what altitude?","4 satellites at 35,700 kilometres.","4|35"],
+["equip","What is the purpose of AIS?","To prevent collisions and increase safety in congested areas.","collision"],
+["equip","How often does AIS transmit while underway?","Every 2 to 10 seconds, depending on speed.","2|10"],
+["equip","How often does AIS transmit while at anchor?","Every 3 minutes.","3"],
+["equip","Since when has AIS-SART been in use?","1 January 2011.","2011"],
+["equip","What is the transmission range of an AIS-SART?","5 nautical miles.","5"],
+["equip","How many messages per minute does an AIS-SART send?","8 messages, 4 on each AIS channel.","8"],
+["equip","What symbol shows an AIS-SART on a chart plotter?","A circle with an X inside.","circle|x/cross"],
+["equip","What is the waterproof rating of an AIS-SART?","10 metres for 5 minutes.","10"],
+["equip","Where and when was NAVTEX introduced?","Boston, 1983.","1983/boston"],
+["equip","NAVTEX has been part of the GMDSS since which year?","1999.","1999"],
+["equip","What is the international English NAVTEX frequency?","518 kilohertz.","518"],
+["equip","What is the national language NAVTEX frequency?","490 kilohertz.","490"],
+["equip","What NAVTEX frequency is used in the tropics?","4209.5 kilohertz.","4209/4 209/4 thousand 209"],
+["equip","What is the maximum NAVTEX reception range?","About 400 miles.","400"],
+["equip","What is the minimum distance between two NAVTEX stations with the same identifier?","About 800 miles.","800"],
+["equip","How often does each NAVTEX station transmit?","Every 4 hours, for up to 10 minutes.","4"],
+["equip","How long before departure should NAVTEX be switched on?","At least 4 to 12 hours.","4/12"],
+["equip","At what time of day is NAVTEX range greatest?","At night.","night"],
+["equip","How many NAVAREAS are there worldwide?","21.","21"],
+["equip","NAVTEX message type A is what?","Navigational warnings.","navigat"],
+["equip","NAVTEX message type B is what?","Meteorological warnings.","meteorolog/weather"],
+["equip","NAVTEX message type C is what?","Ice reports.","ice"],
+["equip","NAVTEX message type D is what?","Search and rescue information.","search|rescue"],
+["equip","NAVTEX message type E is what?","Meteorological forecasts.","meteorolog/weather|forecast"],
+["equip","NAVTEX message type L is what?","Additional navigational warnings.","navigat"],
+["equip","NAVTEX message type Z means what?","No message on hand.","no message/nothing"],
+["equip","Which NAVTEX message types cannot be deleted?","A, B, D and L.","a|b|d|l"],
+["equip","A NAVTEX message numbered 00 has which priority?","VITAL, for immediate transmission.","vital"],
+["equip","What does character B1 in a NAVTEX header show?","The transmitting station, as one letter.","station/transmitter"],
+["equip","What does character B2 in a NAVTEX header show?","The message type.","type/subject/kind"],
+["equip","Which group of letters starts a NAVTEX message, and which ends it?","ZCZC starts it, NNNN ends it.","zczc/z c z c|nnnn/n n n n"],
+["equip","At what character error rate is a NAVTEX message automatically deleted?","5 percent.","5"],
+["equip","What battery voltage range is acceptable before a voyage?","12 to 14 volts.","12|14"],
+["equip","Name the daily radio equipment checks during a voyage.","DSC internal test, batteries, and the NAVTEX printer and paper.","dsc/battery/batteries/printer/paper"],
+["equip","Which equipment is checked monthly during a voyage?","The EPIRB and the SART.","epirb/e perb/beacon|sart"],
+["equip","When is it allowed to test broadcasting equipment?","Only in the first 5 minutes of any hour, for example 09:00 to 09:05.","5|hour"],
+["equip","How do you test an EPIRB?","Visual inspection, switch to the middle position so the light comes on, check the expiry date and the hydrostatic release.","light/middle/expir/hydrostatic/visual/inspect"],
+["proc","When is responsibility for a distress transferred to another station?","When you decide to abandon ship. Control goes to the RCC or the responding vessel.","abandon"],
+["proc","From the life raft after hearing the SART beep, who do you address your MAYDAY to?","Ship who received my radar SART signal, said three times.","sart|receiv"],
+["proc","Calling from a life raft after you see a ship, how do you address it?","Describe it, for example Black container ship with white bridge, three times, and say which side of it you are on.","describ/colou/color/black/container|"],
+["proc","Before calling from the life raft, which two settings do you adjust on the portable VHF?","Power to high, and the squelch to remove background noise.","power/high|squelch"],
+["proc","Responding to a port control that acknowledged your distress, what do you request?","Send fast ships to the distress area to evacuate the crew.","send/ship|evacuat/rescue/crew"],
+["proc","What channel and power setting are used for these special distress responses?","Channel 16, high power.","16|high"],
+["proc","Recite the structure of a contact check from Solaris to Tami.","Tami, Tami, Tami. This is Solaris, Solaris, Solaris. How do you read me? Over.","tami|solaris|read|over","p"],
+["proc","Recite a full MAYDAY distress call and message for the yacht Tami, MMSI 428000567, fire on board in danger of sinking, six persons on board. Make up a position.","Mayday, Mayday, Mayday. This is Tami, Tami, Tami, 428000567. Mayday Tami. Position: one two degrees one two minutes north, zero one two degrees one two minutes east. Fire on board, in danger of sinking. Require immediate assistance. Six persons on board. Over.","mayday|tami|fire|assist|6|over","p"],
+["proc","As sailboat Vered, acknowledge a MAYDAY you've heard from Tami.","Mayday. Tami, Tami, Tami. This is sailboat Vered, sailboat Vered, sailboat Vered. Received Mayday. Over.","mayday|tami|vered|received/roger","p"],
+["proc","As Vered, tell the vessel in distress Tami your position and ETA.","Mayday. Tami. This is sailboat Vered, sailboat Vered. I am ten miles north of you, speed ten knots, ETA six zero minutes. Over.","mayday|tami|vered|eta/minute","p"],
+["proc","Recite a MAYDAY RELAY from Vered for the yacht Tami, sinking, five persons on board.","Mayday Relay, Mayday Relay, Mayday Relay. This is Vered, Vered, Vered, 428123456. Following received from yacht Tami on channel one six. Quote: Mayday Tami, two zero miles, one six four degrees from Iraklion Crete, sinking, require immediate assistance, five persons on board. Unquote. Ships in vicinity report and assist. Over.","relay|vered|tami|quote|over","p"],
+["proc","Recite a man overboard MAYDAY from Tami.","Mayday, Mayday, Mayday. This is Tami, Tami, Tami, 428123456. Mayday Tami, man overboard. Position: three three degrees four two minutes north, zero three two degrees five two minutes east. Require immediate assistance. Time of event one six zero zero UTC. Ships in vicinity report and assist. Over.","mayday|overboard|tami|assist|over","p"],
+["proc","Recite how the station controlling the distress silences all stations interfering with it.","Mayday. All stations. Seelonce Mayday.","mayday|seelonce/silence/see lonce/si lance/c lance","p"],
+["proc","Recite how a station not in control of the distress, Vered, silences interference.","Mayday. All stations. Seelonce Distress. This is Vered.","mayday|seelonce/silence/see lonce|distress|vered","p"],
+["proc","As Zim Haifa, recite the message that ends a distress event for Tami.","Mayday. All stations, all stations, all stations. This is Zim Haifa, Zim Haifa, Zim Haifa. Time one nine three zero UTC. Tami Seelonce Feenee. Out.","mayday|all stations|zim|feenee/fini/feeney/finee|out","p"],
+["proc","As Zim Haifa, recite the PRUDONCE message for the Tami distress.","Mayday. All stations, all stations, all stations. This is Zim Haifa, Zim Haifa, Zim Haifa. Time one nine zero zero UTC. Tami Prudonce. Out.","mayday|zim|prudonce/prudence/pru donce|out","p"],
+["proc","Recite the cancellation of a false DSC distress alert from Tami.","All stations, all stations, all stations. This is Tami, Tami, Tami, 428000567. Position. Cancel my false distress alert of, date and time UTC. Master Tami, 428000567, date and time UTC. Out.","all stations|tami|cancel|false|out","p"],
+["proc","Recite a PANPAN to RCC Haifa from Tami: mast fell down, no engine, drifting south, need a tow.","PANPAN, PANPAN, PANPAN. RCC Haifa, RCC Haifa, RCC Haifa. This is Tami, Tami, Tami, 428123456. Position. Mast fell down, no engine, drifting south. Need towing urgently. Over.","pan|haifa|tami|mast|tow|over","p"],
+["proc","Recite the opening PANPAN MEDICO call from Tami to RCC Haifa.","PANPAN, PANPAN, PANPAN. RCC Haifa, RCC Haifa, RCC Haifa. This is Tami, Tami, Tami, 428123456. Medico. Over.","pan|haifa|tami|medic|over","p"],
+["proc","Recite a SECURITE navigational warning from Tami for a floating container.","SECURITE, SECURITE, SECURITE. All stations, all stations, all stations. This is Tami, Tami, Tami, 428000567. Navigational warning. Floating container. Position. Dangerous to navigation. Ships in vicinity keep a sharp lookout. Out.","securit/security/secure|all stations|tami|container|out","p"],
+["proc","Recite the opening of a Tango Romeo from Tami to RCC Haifa.","RCC Haifa, RCC Haifa, RCC Haifa. This is Tami, Tami, Tami, 428000567. Tango Romeo. Over.","haifa|tami|tango romeo/tango|over","p"],
+["proc","You're abandoning ship. Recite the transfer of responsibility to RCC Cyprus.","Mayday. RCC Cyprus. This is your vessel name, twice. Abandoning ship to life raft with portable VHF. Take over control. Over.","mayday|cyprus|abandon|control|over","p"],
+["proc","From life raft Niva, after hearing the SART beep, recite your MAYDAY call. 5 persons on board.","Mayday, Mayday, Mayday. Ship who received my radar SART signal, three times. This is Niva life raft, three times. Require immediate assistance. 5 persons on board. Over.","mayday|sart|niva|assist|over","p"],
+["proc","From life raft Niva, you can see a black container ship with a white bridge on your starboard side. Recite your call.","Mayday, Mayday, Mayday. Black container ship with white bridge, three times. This is Niva life raft, three times. I am on your starboard side. Require immediate assistance. 5 persons on board. Over.","mayday|container|niva|starboard/side|over","p"],
+["proc","As sailboat Niva, recite your reply to Bangkok Port Control after it acknowledged your MAYDAY.","Mayday. Bangkok Port Control. This is sailboat Niva, twice. Send fast ships to the distress area to evacuate the crew. Over.","mayday|bangkok|niva|evacuat/fast ship|over","p"],
+["proc","As Tami, tell sailboat Vered that you no longer need its help.","Mayday. Vered, Vered, Vered. This is Tami, Tami, Tami. I am being assisted, proceed with your voyage. Out.","mayday|vered|assist|proceed/continue|out","p"],
+];
+const PHONETIC = {A:"Alpha/alfa",B:"Bravo",C:"Charlie",D:"Delta",E:"Echo",F:"Foxtrot/fox trot",G:"Golf",H:"Hotel",I:"India",J:"Juliet/juliett",K:"Kilo",L:"Lima",M:"Mike",N:"November",O:"Oscar",P:"Papa",Q:"Quebec",R:"Romeo",S:"Sierra",T:"Tango",U:"Uniform",V:"Victor",W:"Whiskey/whisky",X:"X-ray/xray/x ray",Y:"Yankee",Z:"Zulu"};
+
+const NOTES = ["SRC – GMDSS\nShort Range Certificate\nGlobal Maritime Distress & Safety System\nOperator's Certificate, Short Range –\nMaritime Service - for a station limited to VHF, in relation to GMDSS)\nExam Structure\n• Part A - Written Exam Passing score 80\n• Preparation of a distress broadcast including: Alert, call, message and distress traffic\nand the procedures for transmitting them. Exam duration 15 minutes.\n• 20 multiple choice questions. Exam duration 30 minutes.\n• Part B - Practical Test Passing score 75\nA candidate who fails Part A (either one of the parts) will not be able to continue to\nPart B. A candidate who passes Part A but fails Part B will be able to complete Part B\non two examination dates within a period not exceeding one year (provided that at\nleast one month elapses between exams.", "Global Maritime Distress & Safety System\n• In 1899, the first known use of radio for saving lives at sea was recorded.\n• In 1902, with the invention of Morse code, the number of losses at sea was reduced. Still, often\nthe remains of vessels were not found and the causes of sinking were unknown.\n• Until 1988, there were still many cases in which the distress message was not received because\nthere were no other vessels in the area or they did not have time to reach the vessel in time.\n• In 1988, the International Maritime Organization (IMO) adopted the GMDSS.\n• The implementation and operation of the system have continued from 1992 to the present day\n(1999 was the target year).\n• Ships will continue to listen to channel 16 in the near future to provide coverage for ships that are\nnot members of SOLAS and to enable communication between vessels in times of emergency.\nShips and small craft that are not required to have full GMDSS equipment are required to\nbe equipped with a VHF marine radio and an EPIRB (for international voyages, an operator\nwho has passed the Ministry of Transportation and/or the Ministry of Communications\nexams is required). The certificate is for voice communication only, and is called a\n\"limited radio telephone service.\" \"Limited\" refers to the transmission power and control\nover the selection of channels and frequencies.", "Global Maritime Distress & Safety System\n• A complex system of devices, stations, communication networks, satellite arrays,\ninternational administrations, organizations and control units.\n• The purpose of the system is to automate and improve emergency communications\nin the maritime sector. The system transmits alerts about ships in distress to ships in\nthe area, to coastal stations and search and rescue (SAR) authorities.\n• For the first time, coastal rescue authorities are given responsibility for coordinating\nrescue efforts in the event of a maritime emergency.\nThe system is based primarily on the use of radio communications", "Components of the GMDSS system\n• DSC - Digital Selective Call Controller.\n• A digital system for receiving and sending distress alerts, safety messages, and radio\ncommunications on VHF channel 70.\n• EPIRB - Emergency Position Indicating Radio Beacons.\n• When the homing beacon is activated, the signals are received by satellites and a\nsearch and rescue system is activated.\n• SART – Search and Rescue Radar Transponder.\n• The SART device increases the detection and location capabilities of lifeboats by\nactively returning the radar signal.\n• NAVTEX - An international system for the automatic transmission and reception of\nemergency safety and weather messages (Maritime Safety Information MSI) from coastal\nstations spread across the globe.\nGPS is not part of GMDSS, but it provides the most accurate position for\nthe GMDSS system", "Advantages of the GMDSS system\n• A vessel equipped in accordance with the GMDSS can send digital distress alerts quickly via\nradio (VHF, HF, MF) or via a satellite system.\n• These alerts contain enough information to enable a search to be initiated even if they were\nunable to establish voice contact (distress call) with the vessel in distress.\n• The GMDSS system provides alerts to coastal stations and other vessels located near the\nvessel that transmitted a distress signal. The digital transmission is carried out on channel 70,\nthus reducing the load on channel 16, which is also used as a calling channel.\n• The GMDSS system requires vessels to be equipped with an EPIRB device that can transmit a\ndistress alert to satellites at a frequency of 406 MHz\n• NAVTEX allows for the receipt of weather forecasts, storm warnings, navigation warnings, ice\ncrises, ecological pollution warnings, and warnings regarding the operational status of\nelectronic aids. The information can be received by broadcasting on the frequency 518 KHz at a\ndistance of up to 400 miles from the coastal stations.", "Organizations\n• ITU- International Telecommunication Union\nAn organization responsible for the regulation of global radio transmissions\n• SOLAS- Safety of Life at Sea Convention\nA supplementary convention to ITU regarding maritime safety. This convention was\none of the milestones for the establishment of the IMO\n• IMO- The International Maritime Organization\nThe International Maritime Organization. Established as an international advisory\norganization in 1948 and began its activities in 1958.\n• MSI- Maritime Safety Information\nMaritime safety information that can be received via NAVTEX", "Mandatory equipment for ships according to division\ninto GMDSS regions\nA1  •\n•\nVHF equipment\nVHF EPIRB or Satellite (S-EPIRB)\n20-30 miles  •  MSI receiver\noffshore\n•  Portable radio\nA2  •\n•\nVHF and MF equipment\nS-EPIRB (satellite)\n50-100 miles  •  MSI receiver\noffshore\n•  Portable radio\nA3  •  VHF, HF and MF equipment or satellite\ncommunications (INMARSAT)\nAll areas between 70°N  •  S-EPIRB\nand 70°S not excluding\nA1 and A2\n•  MSI receiver\nA4  •  S-EPIRB (satellite with polar\ncoverage)\nThe Remaining areas  •  VHF, HF and MF equipment\n•  MSI receiver", "GMDSS Definitions of Area A1\nSRC-GMDSS- Short Range Certificate used for non-SOLAS vessels sailing in Area A1 only.\n• All vessels sailing within the radiotelephone coverage area of at least one VHF coast\nstation where DSC communication is available - located in Area A1.\n• A vessel equipped according to GMDSS procedures sailing in Area A1 must maintain\ncontinuous listening on DSC channel 70.\n• Ships operating in Area A1 must have duplicate equipment, shore and sea\nmaintenance.\n• A vessel in Area A1 but outside NAVTEX coverage must be equipped with alternative\nequipment for receiving maritime safety information on HF, Telex or INMARSAT.", "List of literature required for a vessel for an\ninternational voyage\n1. GMDSS Radio Log Book - The captain of the vessel is obliged to check the logbook\nevery day and sign it.\n2. Global Maritime Distress and Safety System (GMDSS) - Admiralty list of Radio\nSignals Vol.5\n3. List of Coast Stations - Admiralty List of Radio Signals Vol.1\n4. Admiralty List of Lights and Fog Signals - List of lights.\n5. List of ship stations - Alphabetical list of Ships.\nAll small vessels (yachts) are required to have a ship's log only, which\nserves as a general log and includes the wireless log.", "Introduction to Communication\n• A radio station on a vessel is classified as a ‘mobile station’ as opposed to a fixed\nstation, or a satellite station\n• A mobile station on a vessel may contain devices that have a legal approval or\nobligation\n• All equipment must be approved for use in the areas and at frequencies of the\nmaritime mobile service as defined by the International Telecommunications Union\n(ITU).\n• According to ITU requirements, the operator of a ship station for radiotelephony only,\nshall be limited to operating equipment that does not allow manual control of\nfrequencies, but operates by means of a channel selector that simultaneously\ndetermines the transmission frequency and the reception frequency – ‘Transceiver’\nITU- International Telecommunication Union", "Introduction to VHF radio\n• Communication is done by line of sight between two antennas\n• VHF transmission is a result of the height of the vessel's antenna. The height of the antenna\nwill affect the range of communication (transmission and reception). The typical\ntransmission range of a ship is 25 miles. A small vessel is about 15 miles\n• VHF communication will reach maximum efficiency when the squelch is adjusted for\nmaximum receiver sensitivity in relation to the appropriate channel, while appropriately\nadjusting the transmission power. Squelch affects the reception range only\n• Vessels equipped with GMDSS equipment must contain the following components:\nDistress alerts to and from the vessel, search and rescue coordination, communication at\nthe scene of the incident, homing signals, maritime safety communications, general\ncommunications, bridge-to-bridge communications\n• Functional requirements according to GMDSS include: Transmission and reception of\nhoming signals, and transmission and receiving general communications between ships\nand shore stations", "Ethics of Radio use\n• Do not use foul language.\n• Channel 16 is used for distress, urgency and safety communications. When using\nChannel 16 the following principles must be observed:\n• A conversation must not last longer than one minute.\n• A contact check must not last longer than 10 seconds.\n• The station may be called at 2 minute intervals.\n• This channel must not be used for communication with other vessels.\n• The confidentiality of communications must be maintained.\n• The channel allocation (local and international) must be followed.\n• Broadcasting laws and regulations must be followed.", "Channel distribution\nVery Low Frequency  VLF  10-30KHz\nLow Frequency  LF  30-300Khz\nMedium Frequency  MF  300-3000KHz\nHigh Frequency  HF  3-30MHz\nVery High Frequency  VHF  30-300MHz\n• The bandwidth allocated to the maritime radiotelephone service is 156-174Mhz\n• The range is divided into 59 channels separated by 25 KHz.\n• Channels: 1-28, 60-88, AIS1, AIS2", "Transmission Bands\nBand  Frequency Range  Use\nVHF\n30 to 300MHz\nVery High Frequency\nUHF  216 to 450MHz were\n300 to 1000MHz\nUltra High Frequency  sometimes called P-Band\nL-Band  Inmarsat Coverage\n1 to 2GHz\nLong wave  1600MhZ\nS-Band  Weather radar, surface ship\nShort wave  2 to 4GHz\nradar\nC-Band\nCommercial ground to\nCompromise between  4 to 8Ghz\nsatellite communications\nS and X\nX-Band\n8 to 12GHz  SART 9GHz\nX for cross", "Frequency Modulation (VHF)\nVHF Equipment Modulation Characteristics\nModulation means transmitting information on a carrier wave. That is, the way in which the\ninformation you want to transmit (speech, text, music, image) is \"dressed\" on the radio wave that\ncarries it from the transmitting device/station to the radio receiver at the receiving station.\n• In the FM method or \"Frequency-Modulation\" the information is \"dressed\" on the frequency of\nthe carrier wave. So, the information is encrypted by changing the carrier wave frequency by\n12.5 kHz in each direction from the central frequency. In fact, the transmission occupies a band\nof 25 kHz.\n• The frequency modulation in the speech channels is G3E/F3E\n• The frequency modulation in the DSC equipment (channel 70) is G2B\n• An older method AM or \"Amplitude-Modulation\" the information is \"dressed\" on the\namplitude of the carrier wave.", "Types of Communication\nSimplex Communication (Single-Way Transmission, - (Simplex)\n• A channel that contains one frequency that is used for transmission and reception.\n• speaking or listening alternately.\n• Duplex Communication (Two-Way Transmission, - (Duplex)\n• A channel that consists of two different frequencies. One for transmission and one for\nreception. Duplex transmission also requires antenna multiplication or antenna splitters\nto allow simultaneous transmission and reception. Duplex transmission is only possible\nbetween a shore station and a ship that has a radio with duplex communication\ncapabilities.\n• The transmission frequency of ships in duplex is the same, the transmission frequency of\nshore stations is the reception frequency of the ships.\n• Semi-Duplex Communication (Semi-Duplex)\n• A simplex communication that is carried out on one frequency of a duplex channel. This\ntype of communication enables conversation between a station that transmits on duplex\nchannels with a station that has a simplex device. For example, communication between\na small ship and shore stations.", "Reception ranges\nTypical reception ranges:\n• Between two handheld devices - 5 miles\nVHF transmission range\n• Between two yachts - 15 miles\ndepends on:\n• Between two ships - 25 miles\n• Antenna height\n• Between a yacht (antenna height 9 m) to a shore\n• Transmission strength\nstation - 35 miles\n• Day and night\n• Between a ship (antenna height 90 m) to a shore\nstation - 60 miles\nFactors affecting VHF reception range:\n• Reception range is affected by Squelch\ndirection\n• Atmospheric conditions", "Distribution of broadcast channels\nUse  Channel\nSafety and Call Distress Channel (156.80 MHz)  16\nDSC - Distress and Safety Channel (156.525 MHz)  70\nFirst choice for inter ship and inter ship/aircraft communications in search and rescue", "(156.30 MHz)\nSecond choice for inter-vessel communication  8\nCommunication on the subject of vessel movement in Israel, used by the Israeli Navy.  11\nSafety Channel - Bridge to Bridge safety  13\nCommunication with ports (Port operations)  12, 14\nInternal communication with power of 1 Watt  15, 17\nPublic communication (Duplex) transmission channel and reception channel  24,25,26,27\nCommunication between fishing vessels  67, 73\nChannels that serve as guard bands for channel 16. Can be used for transmission at a  75, 76\npower of 1 watt (Guard Bands for Ch. 16)\nAutomatic Identification and Surveillance Channels  AIS1, AIS2\n(161.975MHz - AIS1)  (162.025MHz - AIS2 )", "Typical Switches for a Marine VHF Radio\n• ON/OFF - Volume - On/Off switch and volume control (Channel Select) . CH - Channel\nselection control\n• Squelch - Noise suppressor, filters external interference from neighbouring frequencies\n• CH. 16 Channel 16 Quick Select Switch\n• DW- Dual Watch - A switch that allows listening on two or three (TW) frequencies. One\nadditional channel to channel 16. When listening, channel 16 will break out, each time a\ntransmission is received from it.\n• Distress Alert - A quick access switch to channel 70 for transmitting distress alerts on\nGMDSS integrated devices. The minimum information to be transmitted is the MMSI (digital\nidentification of the vessel).\n• Power Damper - Reduces the transmission power from 25 Watt to 1 Watt for communication\non board and near the vessel. The default while sailing is to listen to channel 16 at a\ntransmission power of 25 Watt.\nThe boat's batteries should be sufficient for 6\nhours of operation at high power  22\nHandheld walkie-talkie\n• Reception range between two handheld devices - 5 miles\n• Operating time - 40 minutes to an hour on the air.\n• Listening only for at least 8 hours\n• Water resistant to a depth of 1 meter for 5 minutes\n• Contains a rechargeable nickel-cadmium battery.\n• Must have a spare lithium battery that allows for an operating time equivalent to the\nrechargeable battery\nat least\n• Working channels - channel 16 and at least one additional working channel\n• Power levels –\n• Low – 0.25Watt\n• High – 1 Watt at least", "MMSI - Maritime Mobile Service Identity\n• 9-digit number\n• Personal identification for each ship or shore station\n• Issued free of charge upon request from the licensing authorities\n• Automatically included in every DSC call\n• MID - Maritime Identification Digits\n• 3 digits indicating the country to which the ship belongs\n• Israel's MID digits 428\n• Can be entered by yourself when first installing the DSC equipment\n• After first installation, its replacement is done by a qualified technician", "MMSI-Maritime Mobile Service Identity\nShip/Vessel: 428123456\nThe numbers following the country code indicate the station's personal identity.\nCoast Station: 004281234 - with the first digits '00’ indicates this is a coast station\nShip Group: 042854784 - with the first digit '0’ indicates this is a ship group\nThe identification code will always be 9 digits.", "MMSI - Maritime Mobile Service Identity\n• EPIRB – AIS -  974211234\n• AIS-SART -  970211234\n• SAR-AIRCRAFT - Search and rescue aircraft equipped with DSC\n111428123\n• NAV-AIDS - Devices used as navigation aids (lighthouse ship)\n994281234\n• MOB PERSONAL - Personal devices\n972211234", "MMSI-Maritime Mobile Service Identity\nStation  MMSI  Remarks\nShip  428123456\nCoast station  004281234\nGroup of ships  042812345  The additional digits will be determined by the group\nmembers.\nSAR-Aircraft  111428123  Search and rescue aircraft equipped with DSC\nNAV-AID  994281234  Devices used as navigational aids\n(for example, a lightship)\nAIS-SART  970721234\nMOB Personal  972721234  Personal equipment\nEPIRB-AIS  974721234\nBlue - Fixed digits\nRed - MID\nGreen - Manufacturer identification\nBlack - Additional digits/Personal identification  27\nCall signs and Identification\n• Call signs and identification allow the type of wireless station to be identified\n• The call sign consists of letters and numbers\n• The first two components of the call sign identify the country.\n• The two components can be: two letters, a letter and a number, or a number and\na letter or two letters. The identification components of Israel are 4Y or 4X", "Reading and identification signals\nCountry code  Additional\nStation description  (number and letter or letter  letters  Digits - Other than 1 or 0  Example\nand number or two letters)  (required)\nPlus, up to 3 additional\nCoast station  4Y or 4X  X  4X0 (RCC Haifa)\ndigits\nPlus, up to 1 additional\nShip  4Y or 4X  XX  4XBG8\ndigit\nPlus, up to 2 additional\nLifeboat  Mothership Identification  4XBG857\ndigits\nAirplane  4Y or 4X  XXX  4XGSK\nPlus, up to 1 additional\nAirplane lifeboat  Aircraft Identification  4XGSK6\ndigit", "Procedure for establishing contact on channel 16\nStructure:\nSpecific Station (or) All Stations x 3\nTHIS is Caller Name x3\nOVER\nTAMI, TAMI, TAMI\nTHIS is SOLARIS, SOLARIS, SOLARIS\nOVER\nFull call - call x3 + identification x3\nShort call - call x1 + identification x2\nShort call will be used after establishing initial contact and in crowded areas where\nthere is a load on the communication network", "Principles of communication\n• In a conversation between two ships (Ship to ship :)\nThe ship being called determines the channel to which you move (working channel)\nand the duration of the conversation\n• In a conversation with a coast station:\nThe coast station determines the working channel and the duration of the\nconversation\nOver - End of sentence when waiting for a response\nOut - End of conversation when no response is expected\nStandby - Wait in the same state (or on the channel you were transferred to)\nUp - To confirm moving to the agreed frequency\nThe first step in any emergency or safety distress\ntransmission is to send a digital alert on DSC\n(Channel 70).", "Regular expressions in communication\n• Correct - correction, when you want to correct a letter or word\n• My call sign is 4X33 Correct - 4X37\n• In figures - in numbers, to emphasize that the continuation is in numbers in phonetic spelling\n• My MMSI in figures is: Four Two Eight Six Six Six Six Six Six\n• In letters - in letters, to emphasize that the continuation is in numbers in phonetic spelling\n• My ships name in letters is: Yankee Alpha Mike India\n• I spell - I spell, when switching to phonetic spelling (words or numbers)\n• My ETA is 19:00 I spell: Mike Yankee India Sierra One Nine Zero Zero\n• Repeat/Say again - say again. In case a word or part of the message was not received, ask to repeat them\n• Yam this is Marina Tel-Aviv Marina Tel-Aviv, repeat your ETA\n• I say again - I repeat, when repeating a sentence or last word\n• Tel-Aviv Marina this is Yam Yam, I say again ETA 19:00\n• Received/Roger - I received, confirmation of receipt of a message\n• Yam this is RCC Haifa RCC Haifa Tango Romeo received, nothing else for you. Out\n• Station calling – A station calling. Usually used as a question \"Who is the station calling?\"\n• ….. Station calling RCC Haifa say your name again, Over\n• Copy – I received the message, or in the form of a question \"Do you get the message?\"\n• Yam this is Marina Tel-Aviv Marina Tel-Aviv, do you copy?, over\n• Word before/after – A word before or after. When a word is not understood and you ask for it to be\nrepeated", "Contact Check\n(The Checking Vessel)\nTAMI, TAMI, TAMI\nThis is SOLARIS, SOLARIS, SOLARIS\nHow Do You Read Me?\nOVER\nCommunication quality (on a scale of 5 )\n(Vessel in reply)  1 - Poor connection\nSOLARIS, SOLARIS, SOLARIS\n2 - Poor connection quality\nThis is TAMI, TAMI, TAMI\n3 - Fair connection quality\nI Read You Loud and Clear\n4 - Good connection\nOut\n5 - Excellent connection\ne.g. I read you 3 out of 5", "Internal communication within the vessel\n• Communication will be carried out on channels 15, 17 at low power\n• The reading will be carried out in an abbreviated procedure\n• The main station will be identified by the name of the vessel plus Control (Tami\nControl)\n• The sub-station will be identified by the name of the vessel plus one letter spelled\nphonetically (Tami Alpha) or Tami Bravo)\nTami Bravo\nThis is  Tami Control\nTami Control, Tami Control  This is\nHow Do You Read Me?  Tami Bravo, Tami Bravo\nOVER  I Read You 4 out of 5\nOut", "Order of communication priority\nThe order of priority determines which type of calls, messages and other traffic the\noperator should handle with top priority, whether it concerns his own vessel or\nother vessels using the same communication channel at the same time.\n1. DISTRESS - Distress calls, distress messages and distress traffic.\nThese messages precede the distress call - MAYDAY\n2. URGENCY - Communication concerning the safety of the vessel or person without\ndanger to life. This communication includes reporting a technical malfunction or a\nmedical problem. These messages precede the urgency call - PANPAN\n3. SAFETY - Communication relating to the safety of navigation. This communication\nincludes navigational warnings and meteorological warnings. These messages precede\nthe safety call - SECURITE\n4. ROUTINE - Traffic list, radio call, or travel details\nTransportation and personal and private\ncommunication of staff members is the last priority.", "Mayday, Distress\n• A distress message is transmitted when there is an immediate danger to the vessel, or to\nhuman life and immediate help is needed (when we have no control over the situation)\n• The message is transmitted clearly and at the rate of dictation to all stations\n• Distress communications have priority over any other transmission\n• From the moment the distress message is transmitted, there is wireless silence on channel 16\nand only distress communications are conducted\n• It is mandatory for anyone who receives a distress call to confirm receipt:\n• Make contact and report\n• All communications during distress will begin with the word MAYDAY\n• In case of ambiguity, phonetic spelling must be used\n• After confirming receipt of the distress message, an estimated time of arrival at the scene of\ndistress must be transmitted", "Digital Distress Alert (DSC) transmission on\nchannel 70\n• Before transmitting the alert, select the type of distress << check the location and time data. If\nthe data has not been entered, enter the data and make sure that the device is at maximum\npower (25 Watts). Transmitting a digital distress alert on channel 70 (DSC)\n• The distress alert will be transmitted automatically every 3.5 - 4.5 minutes if not confirmed\n• Small ships do not confirm receipt of a distress alert on DSC\n• After the digital transmission, we will switch to channel 16, make sure that the transmission\npower is 25 Watts, and transmit the distress call and message", "Digital Distress Alert (DSC) transmission on\nchannel 70\nThere are two options for transmitting the alert:\n1. Quick transmission of a distress alert\nContinuous pressing of the distress button for 5 seconds. In this case, the\nfollowing default data will be  transmitted:\nMMSI: 428000567\nNature of distress: Undesignated\nTime and position: Last position and time entered\n2. Transmitting a full distress alert\nA - Pressing the Menu button\nB - Selecting Distress Setting  ENT\nC - Selecting the cause of the distress  ENT\nD - Checking that the location and time entered are correct  ENT\nE - Pressing the distress button continuously for 5 seconds to transmit the alert", "DSC Distress Alert Selection Options\nDistress states to choose from when transmitting a distress alert:\n• Undesignated - Distress state not selected, default transmission\n• Selected distress alert reason\n• Sinking\n• Collision\n• Fire & Explosion\n• Disabled & Adrift\n• Listing & Capsizing\n• Flooding\n• Grounding\n• Piracy - Abandoning\n• Man over board", "DISTRESS broadcast on Channel 16\nDistress call  Mayday, Mayday, Mayday\nThis is\nTami, Tami, Tami, 428000567\nDistress message Mayday Tami\nOne two degrees, one two minutes N/S\nZero one two degrees, one two minutes E/W\nFire on board in danger of sinking\nRequire immediate assistance\nSix persons on board\nOver\nDuring abandonment, the following must be activated:\nEPIRB - activated, located in the water, attached to the raft\nSART - activated, located high on the raft\nVHF - waterproof portable channel 16 on High and a spare battery", "DISTRESS broadcast on Channel 16\ncont.\nConfirmation of  Mayday\nreceipt of  Tami, Tami, Tami\ndistress  This is sailboat Vered, sailboat Vered, sailboat Vered\nReceived Mayday\nOver\nWaiting for  Mayday\nthe event  Sailboat Vered\nmanager to  This is Tami, Tami\ncontact us  Your distance and ETA\nOver", "DISTRESS broadcast on Channel\n16 cont.\nInformation  Mayday\nabout arrival  Tami\ntime at the  This is sail boat Vered, sail boat Vered\nscene of the  I am ten miles north from you speed 10 knots, ETA six\nemergency\nzero minutes from now\nOver\nEvent  Mayday\nmanager  Sail Boat Vered\nresponse  This is Tami, Tami\nProceed and stand by on channel one six\nOver", "DISTRESS broadcast on Channel 16\ncont.\nApproval  Mayday\nTami\nThis is sailboat Vered, sailboat Vered\nProceeding at full speed to your position and standing\nby\non channel one six\nDistress message transmission (relay) on channel 16\n• When a vessel in distress is identified as unable to transmit a distress call (for example, a\ndistress signal is seen without a response on the communication)\n•A distress call is heard that is not answered\n•A fragmented distress call is heard after which the communication is lost\n•The vessel in distress requests that we perform a Relay\n•A coast station requests that we perform a Relay\n•When a vessel overseeing the distress requests that we perform a Relay", "Mayday Relay (Channel 16)\nMayday Relay, Mayday Relay, Mayday Relay\nThis is Vered, Vered, Vered 428123456\nFollowing received from yacht Tami 233666555 on channel one six,\nQuote \" Mayday Tami\nTwo zero miles one six four degrees north to Iraklion Crete,\nSinking, require immediate assistance, five persons on board“ Unquote\nShips in vicinity report and assist\nOver\nThe message will be sent to a coast station\nwith first priority (if one is within reception\nrange).", "Distress Broadcast (Man overboard)\n• Digital Distress Call Broadcast on Channel DSC-70\n• MOB Distress Mode Selection\n• Distress Call on Channel 16\nMayday, Mayday, Mayday\nThis is Tami, Tami, Tami 428123456\nMayday Tami, Man Overboard\nThree three degrees four two minutes north\nZero three two degrees five two minutes east\nRequire immediate assistance\nTime of event one six zero zero UTC\nShips in vicinity report and assist\nOver\nBetween current position;\nThree two degrees one zero minutes north,\nZero three four degrees two one minutes east\nAnd last seen position; Three three degrees two one minutes\nnorth,\nZero three five degrees two zero minutes east\nTime; between one four two zero and one five zero zero UTC", "Message to a vessel reporting receipt of a distress\nincident that does not require assistance\nMayday\nVered, Vered, Vered,\nThis is Tami, Tami, Tami\nI am being assisted proceed with your voyage\nOut", "Silencing a vessel during distress\ncommunication (Channel 16)\nSeelonce Mayday\nSilencing a vessel interfering with a distress call by the vessel in\ndistress or the person supervising the distress call\nMayday\nAll stations Seelonce Mayday\nor,\nMayday\nDana Seelonce Mayday", "Silencing a vessel during distress communication\n(Channel 16) cont.\nSeelonce Distress\nSilencing a vessel that is interfering with distress by any other\nvessel\nMayday\nAll stations Seelonce Distress\nThis is Vered\nor,\nMayday\nDana Seelonce Distress\nThis is Vered", "Careful end to a distressing event\nCareful End of Distress - The station supervising the distress can allow for careful use\nof Channel 16 even though the distress has not yet ended.\nMayday\nAll Stations, All Stations, All Stations\nThis is Zim Haifa, Zim Haifa, Zim\nHaifa\nTime one nine zero zero UTC\nTami Prudonce\nOut", "End of a distress event\nThe end of the state of emergency will be carried out by the station supervising the state\nof emergency.\nMayday\nAll Stations, All Stations, All Stations\nThis is Zim Haifa, Zim Haifa, Zim Haifa\nTime one nine three zero UTC\nTami Seelonce Feenee\nOut", "Cancelling a digital false alarm transmitted\non the DSC-70\n• A ship that has transmitted a false alarm must turn off the device to stop\ntransmitting the alarm.\nTurn it on and report on Channel 16 to All Stations that the false alarm has been\ncancelled\n• A ship that has transmitted a false alarm and reported that the alarm has been\ncancelled will not be subject to any punitive measures.\nAll Stations, All Stations, All Stations\nThis is Tami, Tami, Tami 428000567\nThree two degrees three five minutes north\nZero three two degrees three two minutes east\nCancel my false distress alert of May 3rd, time: two one four three UTC\nMaster Tami 428000567 May 3rd time: two one four nine UTC\nOut", "URGENCY (PANPAN)\n• An urgent message relating to the safety of the vessel or person - without danger to life (when\nthe situation is still under control)\n• In maritime communications, urgent messages are of second priority\n• The messages will be made using DSC and then broadcast on channel 16 and will be directed\nto all stations or to a specific station\n• A message directed to all stations must be cancelled when the urgency has ended\n• Urgency transmission (PANPAN) should be used in the following cases:\n• Vessel malfunction\n• Medical advice or assistance is needed (MEDICO)\n• Evacuation is needed\n• When the situation is not completely clear but under control and there is a concern that the\nsituation will worsen and help will be needed. You can contact a coast station and ask it to\nremain on standby", "URGENCY (PANPAN)\nTechnical Failure - Message Structure DSC and Channel 16\nTransmitting PANPAN Urgency Call on DSC (Channel 70)\nShips that have received the call on their DSC device will tune their VHF receiver\nto channel 16 to hear the urgency message.\nPANPAN, PANPAN, PANPAN\nName Specific Station (or) All Stations x3\nThis is Caller Name x3, MMSI\nPosition... (Latitude/Longitude, relative position)\nWhat is the Problem... (Describe what has happened)\nNeed... (Describe the assistance you need)\nOver", "Urgency (PANPAN)\nTechnical failure - sample call\nPANPAN, PANPAN, PANPAN\nRCC Haifa, RCC Haifa, RCC Haifa\nThis is Tami, Tami, Tami, 428123456\nThree two degrees one zero minutes north\nZero three four degrees two one minutes east\nMast fell down, no engine, drifting south\nNeed towing urgently\nOver\nExample of Problems:\n• Taking water\n• Fire on board\n• Mast fell down\n• No engine", "URGENCY (PANPAN)\nMedical problem Medico - Message structure\nPANPAN, PANPAN, PANPAN\nSpecific Coast Station (or) All Stations x3\nThis is Caller Name x3, MMSI\nMEDICO or Need Medical Advice/Assistance\nOver\nCoastal station response:  PANPAN\nInitiator Name x3\nThis is … Coast station Name x3\nGo ahead or channel two four\nOver", "URGENCY (PANPAN)\nMedico Medical Problem - Message Structure\nMedico Message:\nPANPAN\nCoast Station Name x 1\nThis is... Caller Name x 2\nMedico message begins\nGender, age, body temp, blood pressure,\nstatus and short description of the events,\nwhat action was taken and what treatment/\nmedication was given\nMedico message ends\nOver", "URGENCY (PANPAN)\nMedical Problem Medico - Sample call\nPANPAN, PANPAN, PANPAN\nRCC Haifa, RCC Haifa, RCC Haifa\nThis is Tami, Tami, Tami, 428123456\nMedico\nOver\nCoastal Station Response  PANPAN\nTami, Tami, Tami\nThis is RCC Haifa, RCC Haifa, RCC\nHaifa\nGo ahead\nOver", "URGENCY (PANPAN)\nMedical Problem Medico - Sample call\nMedico message  PANPAN\nRCC Haifa\nThis is Tami, Tami\nMedico message begins:\nMale,26 years, body temp low, blood pressure low, got\nhit on head, un-controlled bleeding, unconscious\nMedico message ends\nOver\nCoastal Station Response  PANPAN\nTami,\nThis is RCC Haifa, RCC Haifa\nReceived medico, standby on channel", "Over  58\nSAFETY (SECURITE)\n• Safety message relating to the safety of navigation and including\n• Navigational warnings\n• Meteorological warnings\n• These messages are of third priority\n• The message will be broadcast on channel 16 and further communication will\nbe carried out on the working channel\nTransmission of the safety call SECURITE on DSC (channel 70)\nShips that have received the call on their DSC device will direct their\nreceiver to channel 16 to listen to the safety message", "SAFETY (SECURITE)\nNavigation Warning (Channel 16)\nSECURITE, SECURITE, SECURITE\nAll Stations, All Stations, All Stations\nThis is Tami, Tami, Tami 428000567\nNavigational warning\nFloating buoy\nPosition (latitude/longitude or relative\nposition)\nDangerous for navigation\nShips in vicinity keep sharp lookout\nOut\nExample of frequently used phrases:\nFloating Buoy/ log/ Container/ Barrel/ Mine.", "Routine Broadcast - ROUTINE DSC\n(Channel 70)\n• The digital call is made on channel 70, the rest of the transmission will be made\non the working channel on VHF\nROUTINE call transmission on DSC (channel 70)\nDSC Call, Routine, Enter the called station MMSI, Select\nworking Channel, Send, E (Enter)\n• Confirmation of reception of the DSC call is made by the called station\n• After confirming the call, both VHF devices automatically switch to the working\nchannel\nselected by the calling station", "ROUTINE TRANSMISSION\nTRAVEL DETAILS- TANGO ROMEO/Transit Report\nRCC Haifa, RCC Haifa, RCC Haifa\nThis is Tami, Tami, Tami, 428000567\nThe vessels transmit the voyage\nTango Romeo  details to shore stations when\nOver  departing port or upon entering port\nTami, Tami, Tami  • The voyage details include:\nThis is RCC Haifa, RCC Haifa, RCC Haifa  • Tango Romeo\nGo ahead  • Vessel name\nOver  • Port of departure\n• Stopover\n• Destination port\nRCC Haifa  • Number of passengers\nThis is Tami, Tami\nTango Romeo begins:\nLeaving Tel Aviv marina bound Antalya Turkey\nvia Limassol Cyprus\nFour persons on board\nOver", "ROUTINE\nTANGO LIMA / Traffic List\n• The list of vessels for which there is communication traffic is broadcast from the coast\nstation in order.\n• The lists are broadcast at fixed times published in the List of coast stations.\n• The first call will be on channel 16 for all vessels. The list of vessels for which there is a\nmessage will be read on the public channel (channel 25). These vessels will receive the\ninformation for them from the coast station on the public channel.\nAll Stations, All Stations, All Stations\nThis is: Cyprus Radio, Cyprus Radio, Cyprus Radio\nTraffic list on channel two five\nOut", "(ROUTINE) Routine Transmission\nRadio Telephone Call\n• Request for a radio-telephone call from a vessel\n• Contact is made with a commercial coast station listed in the List of\ncoast stations\n• The call is made via the lines of the country where the coast station is\nlocated. Once the call is established, it goes from the VHF device on\nthe vessel to the VHF at the coast station and from there to the device\nthat connects to the land lines (telephone)\n• The coast station usually charges for a minimum of 3 minutes of\nconversation and then according to airtime\n• It is possible to pay by credit card or request a collect call", "SART- Search and Rescue Radar Transponder\nActive Radar Transponder\n• A homing device that increases the detection and location of lifeboats/rafts by actively\nreflecting search and rescue radar waves\n• The detection range of the SART depends on the height of the radar antenna of the\nreceiving vessel (searcher) and the height of the SART transmitter antenna, so it should be\nplaced as high as possible on the lifeboat\n• SART transmits signals at a frequency of 9 GHz with a bandwidth of 3 cm\n• The initial reception range is 8-10 miles\n• When it is received by a radar device:\n• 12 equally spaced dots appear on the radar display, one after the other of which\nthe one closest to the centre of the display is the boat that transmitted the distress\nsignal. The 12 dots indicate the direction to the lifeboat and the first dot indicates\nthe distance to the rescue boat\n• At a distance of 1-5 miles, the dots arc until they become complete circles (within\na range of 1 mile) with the lifeboat located in their centre", "SART- Search and Rescue Radar Transponder\n• When the SART device detects a search and rescue radar in range, an audible and\nvisual warning will be given, which will provide a reassuring feeling to people in\ndistress.\n• Stand By - yellow light\n• During transmission - green light + audible warning\n• The SART battery will last for a period of four days (96 hours) in reception mode and 8\nhours in transmission mode\n• The device's batteries must be replaced according to the manufacturer's instructions\n• The device is mandatory in the lifeboats of ships weighing over 300 tons\n• Due to concerns about interference, it is not recommended to place the SART on the\nrig in combination with a passive radar reflector\n• In aerial search, the detection range reaches up to 40 miles\n• Testing the SART\n• Physical inspection - integrity (the most important inspection)\n• Press down on the button and turn right to the Test direction\n• A light will come on and an audible signal will be heard\n• Test Battery life\n• Turning on the radar and SART and identifying the arcs on the screen", "EPIRB - Emergency Position Indicating Radio Beacon\nHoming beacons operating at 406MHz and 121.5MHz\n- Worldwide beacons adapted for reception by Cospas-Sarsat satellites\n- Introduced as part of GMDSS in 1988\n- Transmit information for 0.5 seconds every 50 seconds at a power of 5 Watts\n- The transmitted information includes a personal digital signal for each\nbeacon, thus allowing for certain identification of the source of the distress\nsignal\n• Category 1 - 406/121.5 MHz devices\nFeatures: Floats independently, automatically activated,\nIdentified by satellites anywhere in the world and recognized by GMDSS\n• Category 2 - 406/121.5 MHz devices Similar in features to Category 1\nexcept for manual activation", "EPIRB - Emergency Position Indicating Radio\nBeacon\n• Satellite-detected homing beacons will operate optimally when free-floating on the water\n• If the beacon has been activated, the batteries are sufficient for a transmission time of at\nleast 48 hours\n• The batteries should be replaced every 5 years if the EPIRB has not been used\n• Checking the beacon\n• Physical inspection - integrity (the most important inspection)\n• Moving the power button to the middle - light comes on\n• Checking the battery life\n• Checking the hydrostatic trigger", "EPIRB - Emergency Position Indicating Radio\nBeacon\nELT - Emergency locator transmitter, carriage on aircraft\nPLB - Personal Locator Beacon, used on land sea and air\nEPIRB- Emergency Position Indicating Radio Beacon, carriage on ships", "• Cospas- Russian words \"Cosmicheskaya Sistyema Poiska Avariynich Sudov\",\nmeaning Space System for the Search of Vessels in Distress\n• Sarsat- Search and Rescue Satellite-Aided Tracking", "Medium-Altitude Earth Orbiting Search and\nRescue (MEOSAR) Satellites\n• The next evolution of the Cospas-Sarsat System is the introduction of the medium-earth\norbiting (MEO) satellites\n• The MEOSAR system was declared at the early operational capability (EOC) phase in\nDecember 2016\n• MEOSAR utilizes satellites in the GPS, GLONASS, and GALILEO global positioning\nconstellations\n• The footprint of the MEO constellation is more than 7 times larger the LEO satellites. The\nMEO constellation provides for real-time alerting worldwide without the need to store the data\nand relay it at a later time\n• The MEO satellites operate at an orbit altitude of 19,000 and 24,000 km", "Medium-Altitude Earth Orbiting Search and\nRescue (MEOSAR) Satellites\n• The MEO constellation, when completed, will consist of more than 70 satellites arranged in\norbits so than no less than 4 SAR equipped satellites will be visible from anywhere on earth at\nany time\n• Its space segment currently (end of 2018) comprises:\n• 15 fully operational Galileo satellites\n• 19 fully operational GPS satellites\n• A Russian Glonass satellite is available for test and development\n• Reverse triangulation algorithms will allow for near instantaneous global detection and\nposition fixes after one beacon burst\nMEOSAR enhanced distress alerting capability are characterized by:\n• Quick to near instantaneous global detection of emergency beacons\n• Improved location accuracy\n• High levels of redundancy and availability\n• Robust beacon communication links\n• Improved flexibility against obstruction and interference", "EPIRB- Emergency Position Indicating Radio\nBeacon - MEO SAR\nNavigation satellites\n(GPS, Galileo,\nGlonass)\nMEO LUT- Local User Terminal\nA ground station that calculates the location of the\nbeacon\nRCC\n(1) Attempt to contact\nMCC-Mission Control Center  the vessel in distress\nPerforms cross-referencing and MMSI determination  (2) Broadcast a distress message in NAVTEX\nto expand the search and rescue circle\nRCC-Rescue Coordination Center\nRegional Responsible - Supervises rescue operations and\nappoints the Field Operations Commander\nM-RCC\nOSC- On Scene Commander", "MEOSAR System Advantages\nSystem Benefits:\n• Reduced beacon activation detection time up to almost immediate time\n• Improved beacon location detection capability\n• A widespread system with reliable communication\n• Reduced interference from terrain or communication interference\n• Providing an indication to the beacon that the signal has been received", "EPIRB- Emergency Position Indicating Radio Beacon-\nLEO, GEO system\n• The location of the beacon is determined by the Doppler effect (with an accuracy of 2-5 km) by 4\ntrans-polar satellites (LEOSAR) at an altitude of 1000 km, which complete the Earth's orbit every\n100 minutes. The coverage area of each satellite is about 400 km. The time from sunrise to sunset\nof the satellite is 15-17 minutes.\n• The signal is transmitted to ground stations by a system of geostationary satellites orbiting in a\nfixed position around the equator (GEOSAR), at an altitude of 36,000km, which serve as a relay.\n• The response speed is high, from the moment the distress signal is sent, its reception until the\ndispatch of rescue forces will take about two hours.\n• The EPIRB device is designed to be activated by contact with water and is released in the event of\ndrowning using the hydrostatic trigger (at a depth of 75 (cm)\n• The satellite beacon does not emit a sound signal in case of homing\n• The information sent to the satellite contains the unique identification of the ship (MMSI),\ninformation about the vessel and location if connected to GPS\n• New beacons purchased must be registered with the Ministry of Communications and the MMSI\nnumber is encoded into the content", "EPIRB- Emergency Position Indicating Radio Beacon\nEPIRB- Emergency Position Indicating Radio Beacon\nSatellites\nLUT-Local User Terminal  RCC\nA ground station that calculates the location of  (1) Attempt to contact\nthe beacon  the vessel in distress\nMCC-Mission Control Center\n(2) Broadcast a distress\nPerforms cross-checking and MMS\nmessage in NAVTEX to\ndetermination\nexpand the search and\nrescue circle\nRCC-Rescue Coordination Center\nRegional Responsible - Supervises rescue\noperations and appoints the Field Operations\nCommander\nM-RCC\nOSC- On Scene\nCommander", "GPIRB- Emergency Position Indicating Radio Beacon\n• A system that combines the advantages of GPS technology with EPIRB\n• The information sent to the satellite contains the ship's unique identification (MMSI),\ninformation about the vessel and the precise position received from the GPS.\n• If the signal is within the reception range of the geostationary satellites orbiting at a fixed\nposition around the equator (GEOSAR), at an altitude of 36,000 km, the rescue process will\nbegin almost immediately (a few minutes)\n• If the location is not covered by the geostationary satellites the full 406 MHz EPIRB process\nwill be carried out\n• Advantages:\n• Shorter time to start rescue operations - no need to wait for a LEO satellite to pass\n• Accuracy in location - repeat transmissions of the precise position", "International Mobile- Satellite Organization\n• A company engaged in maritime communications\n• A system of 4 geostationary satellites, at an altitude of 35,700 km\n• Devices that contain GPS data and provide precise positioning\n• The satellite coverage is at a power of 1600 MHz in the L-band and allows immediate\nreception of all data on the type of vessel, location and home port. The information\nreceived is sent to the LES - Land Earth Station and from there to the RCC in the distress\narea\n• Coverage area between 70 S - 70 N (no coverage at the poles)\n• The rescue system went out of action and subscribers were transferred to the 406 MHz\nsystem", "EPIRB- Emergency Position Indicating Radio Beacon\nCancelling a false EPIRB alert\nCyprus Radio, Cyprus Radio, Cyprus Radio\nThis is; Tami, Tami, Tami 428000567\nThree three degrees three three minutes north\nZero three two degrees three two minutes east\nCancel my false EPIRB alert of May 3rd Time two one four three UTC\nMaster Tami 428000567 May 3rd , Time two one four nine UTC\nOut", "EPIRB/GPIRB- Registration\n• Website- www.406registration.com\n• Coast stations or RCCs have a general password through which\nthey can identify the vessel to which the device belongs\n• Global beacon population estimated at about 2,105,000\n• Global registered beacon population: about 1,634,000\nSource: System Data - SAR Statistics, 2018 (for 2017)", "Automatic Identification System (AIS)\n• A system for preventing collisions and increasing the safety of vessels in congested\nareas (near ports)\n• The time window for transmission is determined after a short listening period of the\nsystem and identification of free time windows. The time window is updated according\nto the sailing speed\n• The system has been assigned two dedicated channels 87B and 88B\n• The system transmits: shore-to-sea, sea-to-shore, sea-to-sea", "Automatic Identification System (AIS)\nThe AIS sends the following data every 2 to 10 seconds depending on vessels speed while\nunderway, and every 3 minutes while vessel is at anchor\nTransmitted data includes:\n• The vessel's MMSI\n• Navigation status - \"at anchor\", \"under way using engine(s)\", \"not under command\", etc.\n• Rate of turn - right or left, 0 to 720 degrees per minute\n• Speed over ground - resolution from 0 to 102 knots (189 km/h)\n• Position\n• Course over ground - relative to true north to 0.1 degree\n• True Heading - 0 to 359 degrees from e.g. gyro compass\n• Time - UTC/GMT", "AIS-SART (AIS Search and Rescue Transmitter)\n• System active since January 1, 2011 and serves as a replacement for Radar SART\n• The system has a specific identification code: 970721234\nAIS SART code  Manufacturer code  Unique serial number of the facility\n• Water resistant to a depth of 10 meters for 5 minutes\n• Withstands a fall from a height of 20 meters into\nwater\n• Transmission range 5 nautical miles\n• Data is transmitted on AIS channels (87B and 88B)\n• Each minute, 8 messages are produced in sequence\n(time slot 26 msec)\n• 4 messages on each channel\n• One message is enough to accurately locate the\ndevice\n• The message includes:\n• AIS SART Emission\n• Identification code\n• UTC time\n• Location", "AIS EPIRBs – The Best of All Worlds\n• New rules came into force on 1st July 2022 and\nsince then, every EPIRB installed on a ship must\nhave the internal AIS frequency along with the\n406 MHz channel and the GNSS receiver\n• Thus, each EPIRB installed on or after 1st July\n2022 has to comply with it. (But if an EPIRB is\ninstalled on a ship before this date it may not\ncorrespond to the new rules)\nThe system has a specific identification code: 970721234\nAIS SART marking\ncircle with X inside", "NAVTEX- Navigational Telex\n• International Maritime Safety Information System\n• NAVTEX was introduced in Boston in 1983.\nSince 1999, NAVTEX has become part of the GMDSS system\n• The International Maritime Organization (IMO) has recognized NAVTEX\nas a very important tool for transmitting information on:\n• Search & Rescue\n• Navigational and safety warnings\n• Meteorological warnings\n• Ice crisis warnings\n• Weather forecasts\n• Special messages\n• And more...", "NAVTEX- Navigational Telex\n• NAVTEX stations transmit messages that can be received up to a distance of 400 miles. The\nminimum distance between two transmitters with the same identification signal is about 800\nmiles, designed so that a receiver will not be in a position to receive both at the same time\n• The NAVTEX device receives frequencies:\n• 518 KHz in English - International\n• 490 KHz in local language - National\n• 4209.5 KHz- Frequency used in the tropical zone International -\n• All transmitting stations are required to transmit every 4 hours to 10 minutes\n• Before going to sea, it is recommended to leave the NAVTEX device open continuously for at\nleast 4-12 hours in order to receive a full round of messages\n• NAVTEX transmitting stations transmit with the power necessary to cover their area\nof responsibility and the transmission is arranged on a time-sharing basis\n• The maximum range of the transmission will be at night\n• Because messages Important NAVTEX messages are repeated, errors that have been\ntransmitted will be corrected and will not be transmitted again\n• Types of NAVTEX devices –\n• Messages appear on the display (like a computer monitor) without a printout\n• Printed messages, when the paper runs out an audible and visual alarm sounds\n• To postpone a transmission, select the station's identification signal and the transmission\ncode (A - Z) and program a broadcast postponement", "NAVTEX Areas\n• There are 21 areas called NAVAREAS - the world is divided into 16 areas + 5 new\nones added in the Arctic on 01.07.2010\n• In each area the NAVTEX stations are marked with the letters A-Z", "NAVTEX message structure\nB1 - The transmitting station  B2 - -Message  type\nMessage type  B3 B4 - Message number\n(one letter)  (one\n(one letter)\nletter)  (sequential number 1-99)\n- The transmitting station\n(one letter)", "Navtex Messages\nA - Navigational warnings\nB - Meteorological warnings  • Messages A B D L cannot be deleted\nC - Ice reports  • It is recommended not to delete E\nD - Search & rescue information  • The transmission time is up to 10 minutes, so the\nE - Meteorological forecasts  messages are divided into urgency levels and will be\nF - Pilot service messages  transmitted according to the level\nG - Decca messages  • VITAL - for immediate transmission (message number 00)\nH - Loran messages (Long range Nav)  • IMPORTANT - for immediate transmission when the\nI - Omega messages  frequency is free\nJ - Satnav messages  • ROUTINE - for transmission when the frequency is free\nK - Other electronic navaid messages\nL - Additional navigational warnings\nV - Special services\nW - Special services (possible other languages\nuse)\nX - Special services\nY -Special services\nZ - No message on hand (QRU)", "NAVTEX MESSAGE\nZCZC PA13\nROUTINE\n20 MAR 09 1908 UTC\nHAIFARADIO\nNX 1/2009\nNOTICE TO MARINERS\nBLOCKADE ON GAZA STRIP\nALL MARINERS ARE ADVISED THAT AS OF 03 JANUARY 2009 1700 UTC AZA MARITIME AREA IS\nCLOSED TO ALL MARITIME TRAFIC AND IS UNDER BLOCKADE IMPOSED BY ISRAEL NAVY UNTIL\nFURTHER NOTICE.\nMARITIME GAZA AREA IS ENCLOSED BY THE FOLLOWING COORDINATES: 3135,71N 3429.46E\n3146.80N 3410.01E\n3119.39N 3413.11E\n3133.73N 3356.68E\nISR AUTH\nNNNN", "NAVTEX MESSAGE- CER\nCharacter Error Rate\n• 5% - CER the message will be automatically deleted by the NAVTEX receiver and will\nbe received again in the next transmission\n• Up to 4.9% CER – the message will not be automatically deleted, if not understood\nneed to manually delete\nEND OF MSG CER 02%", "Weather zones for NAVTEX in the Mediterranean Sea\nPreparations Before an International Voyage\nEquipment checks before departure\n•  Visual inspection of all equipment and antennas (VHF, GPS, NAVTEX)\n•  Spare antenna and backup cable for the VHF\n•  Battery check: corrosion, loose connections, acid level with a hydrometer. Record in the\nLogbook. If voltage is not between 12v to 14v the battery should be replaced.\n•  Check battery charge on the main panel – under heavy load / while transmitting. . If voltage is\nnot between 12v to 14v the battery should be replaced.\n•  VHF radio check with a distant station, a friend’s boat, the Marina. Maximum send someone\nwith the portable VHF several hundred meters away and check.\n•  DSC test call with a known station, or a friend if you know their MMSI.\nEPIRB check:  SART check:\n•  Visual inspection\n•  Visual inspection\n•  Press the switch down and turn right to Test –\n•  Lift the switch to the middle position – light\nlight comes on and an audible signal sounds\ncomes on\n•  Check the Battery Replacement date on the\n•  Check the expiry date\nlabel\n•  Check the hydrostatic release\n•  Live test with radar, if fitted – optional\nPortable VHF can be checked with the main VHF station\nPreparations Before an International Voyage\nNAVTEX setup & equipment checks during the voyage\nNAVTEX setup:\n•  Program the NAVTEX and switch it on at least 4–12 hours before departure (a full broadcast\ncycle may need 12 hours). NAVTEX messages can also be obtained online eg RASPAN, RCC\nCyprus website.\n•  Update the NAVAREA if you have changed areas since the last voyage (or if the receiver is new)\n•  Delete old messages\n•  Enter the stations and message types according to the route\nEquipment checks during the voyage:\nDaily  Weekly  Monthly\n•  DSC – internal test  •  VHF set – if it hasn't  •  EPIRB\n•  Batteries  been used that week  •  SART\n•  Printers – working, enough\npaper (NAVTEX)\nAll broadcasting equipment should only be tested in the first\n5 minutes of any rounded hour i.e. 09:00 to 09:05", "SPECIAL RESPONSES (VHF ch 16, high power)\nSpecial Responses \u000bStandard operating procedures and voice protocols for marine VHF distress situations, vessel abandonment, and distress control transfer.\nOperational Parameters\nChannel: VHF Channel 16\nPower Setting: High Power\nPrimary Objective: Establish communication, announce distress state, and coordinate rescue or control transfer with responding stations.", "SPECIAL RESPONSES (VHF ch 16, high power)\n1. Transfer of Responsibility for Distress Situation\nTransferring responsibility occurs when deciding to abandon ship. Control is transferred to the most appropriate station (Rescue Coordination Centre or responding vessel) that answered the initial distress call.\nMAYDAY\nRCC Cyprus / US Navy Ship Augusta\nThis is [Vessel Name] (x2)\nAbandoning ship to life raft with portable VHF.\nTake Over Control.\nOver.", "SPECIAL RESPONSES (VHF ch 16, high power)\n2. Survival Craft Communications (Life Raft Protocols)\nCall from Life Raft Upon SART Audio Signal (Beep)\nTurn on the portable VHF radio and set power to high.\nAdjust Squelch control to eliminate background noise.\nBroadcast the distress call:\nMAYDAY, MAYDAY, MAYDAY\nShip who received my Radar SART (or AIS SART) signal (x3)\nThis is Niva life raft (x3)\nRequire immediate assistance\n5 persons on board\nOver", "SPECIAL RESPONSES (VHF ch 16, high power)\n3. Call from Life Raft Upon Visual Identification of a Ship\nTurn on the portable VHF radio.\nAdjust Squelch control.\nBroadcast the directional distress call targeting the visual contact:\nMAYDAY, MAYDAY, MAYDAY\nBlack container ship with white bridge (x3)\nThis is Niva life raft (x3)\nI am on your port / starboard side\nRequire immediate assistance\n5 persons on board\nOver", "SPECIAL RESPONSES (VHF ch 16, high power)\n4.  Response to Shore Station / Port Control\nStandard transmission when responding to a shore authority or Port Control that has acknowledged a distress signal.\nMAYDAY\nBangkok Port Control\nThis is sail boat Niva (x2)\nSend fast ships to the distress area to evacuate the crew.\nOver"];
+/* ---------- helpers ---------- */
+const $ = id => document.getElementById(id);
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const LS = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch(e){} }
+};
+function shuffle(a){ for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];} return a; }
+
+const BANK = BANK_RAW.map((r,i)=>({id:'b'+i,t:r[0],q:r[1],a:r[2],k:r[3],p:r[4]==='p'}));
+Object.entries(PHONETIC).forEach(([L,w])=>BANK.push({id:'ph'+L,t:'rules',q:`What is the phonetic alphabet word for the letter ${L}?`,a:w.split('/')[0]+'.',k:w.toLowerCase()}));
+
+/* ---------- answer matching (works offline) ---------- */
+const NUM = {zero:0,oh:0,nil:0,one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,niner:9,ten:10,eleven:11,twelve:12,thirteen:13,fourteen:14,fifteen:15,sixteen:16,seventeen:17,eighteen:18,nineteen:19};
+const TENS = {twenty:20,thirty:30,forty:40,fifty:50,sixty:60,seventy:70,eighty:80,ninety:90};
+function normalize(s){
+  s = (' '+s.toLowerCase()+' ').replace(/[’']/g,"'").replace(/[^a-z0-9.' ]+/g,' ').replace(/\.(?!\d)/g,' ');
+  const out=[]; const toks=s.split(/\s+/).filter(Boolean);
+  for(let i=0;i<toks.length;i++){
+    const t=toks[i];
+    if(t in TENS){ let v=TENS[t]; if(toks[i+1] in NUM && NUM[toks[i+1]]<10 && NUM[toks[i+1]]>0){v+=NUM[toks[i+1]];i++;} out.push(String(v)); }
+    else if(t==='hundred' && out.length && /^\d+$/.test(out[out.length-1])) out.push(String(out.pop()*100));
+    else if(t==='thousand' && out.length && /^\d+$/.test(out[out.length-1])) out.push(String(out.pop()*1000));
+    else if(t in NUM) out.push(String(NUM[t]));
+    else out.push(t);
+  }
+  const spaced=' '+out.join(' ')+' ';
+  const joined=spaced.replace(/\b(\d)(?: (\d)\b)+/g,m=>m.replace(/ /g,''));
+  return spaced+'|'+joined;
+}
+function hasKey(norm, alt){
+  alt=alt.trim().toLowerCase(); if(!alt) return true;
+  const n=normalize(alt).split('|')[1].trim();
+  if(/^[\d.]+$/.test(n)) return new RegExp('(^|[^\\d.])'+n.replace('.','\\.')+'($|[^\\d])').test(norm);
+  if(n.length<=2) return new RegExp('(^|[^a-z0-9])'+n+'($|[^a-z0-9])').test(norm);
+  return norm.includes(n);
+}
+function keyScore(q, ans){
+  const groups=(q.k||'').split('|').filter(g=>g.trim());
+  if(!groups.length) return 0;
+  const norm=normalize(ans);
+  return groups.filter(g=>g.split('/').some(a=>hasKey(norm,a))).length/groups.length;
+}
+
+/* ---------- Claude (optional, user's own key) ---------- */
+function apiKey(){ return $('apiKey').value.trim(); }
+async function askClaude(prompt, maxTokens=700, timeoutMs=15000){
+  const ctl=new AbortController(); const tm=setTimeout(()=>ctl.abort(), timeoutMs);
+  try{
+    const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',signal:ctl.signal,
+      headers:{'content-type':'application/json','x-api-key':apiKey(),'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:$('model').value.trim()||'claude-haiku-4-5',max_tokens:maxTokens,messages:[{role:'user',content:prompt}]})});
+    const j=await r.json();
+    if(!r.ok) throw new Error(j?.error?.message||('HTTP '+r.status));
+    const text=(j.content||[]).map(c=>c.text||'').join('');
+    const a=text.search(/[\[{]/), b=Math.max(text.lastIndexOf('}'),text.lastIndexOf(']'));
+    return JSON.parse(text.slice(a,b+1));
+  } finally { clearTimeout(tm); }
+}
+function updateKeyState(){ $('keyState').textContent = apiKey() ? '· on' : '· off'; }
+$('apiKey').value = LS.get('gdq-key',''); $('model').value = LS.get('gdq-model','claude-haiku-4-5'); updateKeyState();
+$('apiKey').addEventListener('change',()=>{ LS.set('gdq-key',apiKey()); updateKeyState(); });
+$('model').addEventListener('change',()=>LS.set('gdq-model',$('model').value.trim()));
+$('testKey').onclick=async()=>{
+  LS.set('gdq-key',apiKey()); updateKeyState();
+  if(!apiKey()){ $('keyMsg').textContent='Paste a key first.'; return; }
+  $('keyMsg').textContent='Testing…';
+  try{ const r=await askClaude('Reply with only this JSON: {"ok":true}',50); $('keyMsg').textContent = r?.ok ? 'Key works.' : 'Unexpected reply.'; }
+  catch(e){ $('keyMsg').textContent='Did not work: '+e.message; }
+};
+
+/* ---------- speech out ---------- */
+let voice=null;
+function pickVoice(){
+  const vs=speechSynthesis.getVoices().filter(v=>/^en/i.test(v.lang));
+  voice = vs.find(v=>/google uk english/i.test(v.name)) || vs.find(v=>v.lang==='en-GB'&&/google|natural|premium/i.test(v.name))
+       || vs.find(v=>v.lang==='en-US'&&/google|natural|premium/i.test(v.name)) || vs.find(v=>v.lang==='en-GB') || vs.find(v=>v.lang==='en-US') || vs[0] || null;
+}
+if('speechSynthesis' in window){ pickVoice(); speechSynthesis.onvoiceschanged=pickVoice; }
+function speechify(t){
+  return t.replace(/\bSECURITE\b/gi,'say-cure-ee-tay').replace(/\bSeelonce\b/gi,'see-lonce').replace(/\bPrudonce\b/gi,'proo-donce').replace(/\bFeenee\b/gi,'fee-nay')
+    .replace(/\bPAN ?-?PAN\b/gi,'pan pan').replace(/\bMMSI\b/g,'M M S I').replace(/\bEPIRB(s?)\b/g,'ee-purb$1').replace(/\bGPIRB\b/g,'G P I R B')
+    .replace(/\bkHz\b/gi,'kilohertz').replace(/\bMHz\b/gi,'megahertz').replace(/\bGHz\b/gi,'gigahertz').replace(/\bA([1-4])\b/g,'A $1')
+    .replace(/\b4([XY])\b/g,'4 $1').replace(/\bRCC\b/g,'R C C').replace(/\bETA\b/g,'E T A').replace(/\bUTC\b/g,'U T C').replace(/\bNNNN\b/g,'N N N N').replace(/\bZCZC\b/g,'Z C Z C')
+    .replace(/\bSART\b/g,'sart').replace(/\bAIS\b/g,'A I S').replace(/\bVHF\b/g,'V H F').replace(/\bDSC\b/g,'D S C').replace(/°/g,' degrees');
+}
+let speakToken=0;
+function speak(text){
+  const my=++speakToken;
+  if(!('speechSynthesis' in window)) return sleep(400);
+  speechSynthesis.cancel();
+  const chunks=speechify(text).split(/(?<=[.!?])\s+/).flatMap(c=>c.length>180?c.split(/(?<=,)\s+/):[c]).filter(c=>c.trim());
+  const rate=+$('rate').value||1;
+  return chunks.reduce((p,chunk)=>p.then(()=>new Promise(res=>{
+    if(my!==speakToken) return res();
+    const u=new SpeechSynthesisUtterance(chunk); if(voice) u.voice=voice; u.lang=voice?.lang||'en-GB'; u.rate=rate;
+    let done=false; const fin=()=>{ if(!done){done=true;clearTimeout(tm);res();} };
+    const tm=setTimeout(fin, (chunk.length*75/rate)+2500);
+    u.onend=fin; u.onerror=fin; speechSynthesis.speak(u);
+  })), Promise.resolve());
+}
+
+/* ---------- sound cues ---------- */
+let ac=null;
+function tone(seq){
+  if(!ac) return; const t0=ac.currentTime+0.02;
+  seq.forEach(([f,start,dur])=>{ const o=ac.createOscillator(), g=ac.createGain(); o.type='sine'; o.frequency.value=f;
+    g.gain.setValueAtTime(0.0001,t0+start); g.gain.exponentialRampToValueAtTime(0.25,t0+start+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t0+start+dur);
+    o.connect(g).connect(ac.destination); o.start(t0+start); o.stop(t0+start+dur+0.05); });
+}
+const cue = { right:()=>tone([[660,0,0.12],[990,0.12,0.2]]), wrong:()=>tone([[300,0,0.18],[220,0.18,0.3]]) };
+
+/* ---------- speech in: Chrome speech recognition, one session per answer ----------
+   The mic is closed while the app talks, so it never hears itself. */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const Rec = {
+  r:null, want:false, onText:null, onEnd:null, lastError:'',
+  start(onText, onEnd){
+    this.stop(); this.want=true; this.onText=onText; this.onEnd=onEnd; this._go();
+  },
+  _go(){
+    if(!this.want) return;
+    const r=new SR(); this.r=r;
+    r.lang='en-US'; r.continuous=false; r.interimResults=true; r.maxAlternatives=1;
+    let got='';
+    r.onresult=e=>{
+      let fin='', interim='';
+      for(let i=0;i<e.results.length;i++){ const t=e.results[i][0].transcript; if(e.results[i].isFinal) fin+=t; else interim+=t; }
+      got=fin; this.onText?.(fin, interim);
+    };
+    r.onerror=e=>{ this.lastError=e.error; };
+    r.onend=()=>{ if(this.r!==r) return; this.r=null; if(this.want) this.onEnd?.(got, this.lastError); this.lastError=''; };
+    try{ r.start(); }catch(e){ setTimeout(()=>this._go(),300); }
+  },
+  restart(){ if(this.want) setTimeout(()=>this._go(),120); },
+  stop(){ this.want=false; const r=this.r; this.r=null; if(r){ try{ r.abort(); }catch(e){} } }
+};
+
+/* ---------- state ---------- */
+const S = { mode:'idle', gen:0, cur:null, src:'bank', queue:[], retry:[], fresh:[], freshBusy:false, recent:[], asked:0, right:0, wrong:0,
+  buffer:'', openedAt:0, lastSpeechAt:0, noAnsCount:0, typed:false, topic:'all' };
+const saved = LS.get('gmdss-drive-v1',{}); saved.missed=saved.missed||[]; saved.total=saved.total||{asked:0,right:0};
+
+function setMode(m, label){
+  S.mode=m; $('pill').dataset.s=m;
+  $('pillText').textContent = label || ({speaking:'Reading',listening:'Listening',grading:'Checking',paused:'Paused'}[m]||m);
+  $('pauseBtn').firstChild.textContent = m==='paused' ? 'Continue' : 'Pause';
+  $('pauseBtn').querySelector('small').textContent = m==='paused' ? '“continue”' : '“pause”';
+}
+function renderCounts(){ $('nQ').textContent=S.asked; $('nR').textContent=S.right; $('nW').textContent=S.wrong; $('nRetry').textContent=S.retry.length; }
+function renderHeard(partial){
+  const h=$('heard'); h.textContent='';
+  if(S.buffer) h.append(S.buffer.trim()+' ');
+  if(partial){ const s=document.createElement('span'); s.className='part'; s.textContent=partial; h.append(s); }
+}
+
+/* ---------- question flow ---------- */
+function pool(){ return BANK.filter(q=>(S.topic==='all'||q.t===S.topic) && ($('optRecite').checked || !q.p)); }
+function useFresh(){ return $('optFresh').checked && !!apiKey(); }
+function nextQuestion(){
+  S.asked++;
+  let item=null, src='bank';
+  const due=S.retry.findIndex(r=>r.due<=S.asked);
+  if(due>=0){ item=S.retry.splice(due,1)[0].q; src='retry'; }
+  else if(S.fresh.length && useFresh() && S.asked%3===0){ item=S.fresh.shift(); src='fresh'; }
+  else {
+    if(!S.queue.length) S.queue=shuffle(pool().slice());
+    item=S.queue.shift();
+    if(S.cur && item.id===S.cur.id && S.queue.length){ S.queue.push(item); item=S.queue.shift(); }
+  }
+  S.cur=item; S.src=src;
+  S.recent.push(item.q); if(S.recent.length>40) S.recent.shift();
+  if(useFresh() && S.fresh.length<3) fetchFresh();
+  ask(false);
+}
+async function ask(again){
+  const g=++S.gen; Rec.stop();
+  S.buffer=''; renderHeard(); $('verdict').hidden=true;
+  const q=S.cur;
+  $('qText').textContent=q.q;
+  const sl=$('src'); sl.dataset.k=S.src; sl.textContent = S.src==='retry'?'Back again':S.src==='fresh'?'New from the manual':(q.p?'Recite the call':'Question');
+  renderCounts(); setMode('speaking');
+  const lead = again ? '' : (S.src==='retry' ? 'Let\'s try this one again. ' : '');
+  await speak(lead + q.q + (q.p && !again ? ' Say over when you finish.' : ''));
+  if(g!==S.gen) return;
+  await sleep(250);
+  if(g!==S.gen) return;
+  openListening(g);
+}
+function openListening(g){
+  setMode('listening'); S.openedAt=Date.now(); S.lastSpeechAt=0; S.buffer=''; renderHeard();
+  if(S.typed){ setTimeout(()=>$('typedIn').focus(),50); return; }
+  Rec.start(
+    (fin, interim)=>{ if(g!==S.gen) return; S.lastSpeechAt=Date.now(); renderHeard((fin+' '+interim).trim()); },
+    (got, err)=>{
+      if(g!==S.gen) return;
+      if(err==='not-allowed'||err==='service-not-allowed'){ micBlocked(); return; }
+      if(got.trim()){ S.buffer=(S.buffer+' '+got).replace(/\s+/g,' ').trim(); S.lastSpeechAt=Date.now(); renderHeard(); }
+      const c=S.buffer;
+      // short answers end at the first pause; recited calls end with "over" or a long pause
+      if(c && (/\bover[\s.!?,]*$/i.test(c) || !S.cur.p || Date.now()-S.lastSpeechAt>3500)) return finish(g);
+      if(!c && Date.now()-S.openedAt > (S.cur.p?45000:25000)){
+        S.noAnsCount++;
+        if(S.noAnsCount>=3){ S.noAnsCount=0; return pause('I didn\'t hear anything, so I\'ve paused. Say continue when you\'re ready.'); }
+        return ask(true);
+      }
+      if(err==='network'){ $('voiceInfo').textContent='Speech recognition needs an internet connection.'; }
+      Rec.restart();
+    });
+}
+function micBlocked(){
+  Rec.stop(); S.typed=true; $('typed').hidden=false; $('heard').dataset.hint='Type your answer below.';
+  $('voiceInfo').textContent='Microphone blocked. Tap the icon left of the address bar (or Android Settings → Apps → Chrome → Permissions) and allow the microphone, then reload.';
+  setTimeout(()=>$('typedIn').focus(),50);
+}
+
+const CMD = {
+  again:/^(say again|repeat|repeat (that|the question|please)|again|what was the question|come again|pardon)$/,
+  skip:/^(skip|skip it|skip (this|that)( one| question)?|next|next question|pass)$/,
+  pause:/^(pause|stop|wait|hold on|stop quiz|pause quiz|stand ?by)$/,
+  dunno:/\b(i don'?t know|no idea|not sure|i give up|give up|no clue|don'?t remember|i forget|i forgot)\b/
+};
+function finish(g){
+  if(g!==S.gen || S.mode!=='listening') return;
+  Rec.stop();
+  const ans=S.buffer.trim(); S.noAnsCount=0;
+  const c=ans.toLowerCase().replace(/[^a-z' ]/g,' ').replace(/\b(please|uh|um|er)\b/g,' ').replace(/\s+/g,' ').trim().replace(/\s*\bover$/,'').trim();
+  if(CMD.again.test(c)) return ask(true);
+  if(CMD.skip.test(c)) return verdict({verdict:'skip'});
+  if(CMD.pause.test(c)) return pause();
+  if(CMD.dunno.test(c) && c.split(' ').length<=6) return verdict({verdict:'skip'});
+  grade(ans);
+}
+
+/* ---------- grading ---------- */
+async function grade(ans){
+  setMode('grading'); const g=S.gen;
+  const q=S.cur, score=keyScore(q,ans), short=ans.split(/\s+/).length<=14;
+  let res=null;
+  if(!q.p && score===1 && short) res={verdict:'correct',say:''};
+  else if(apiKey()){
+    try{ const r=await askClaude(gradePrompt(q,ans),300); if(r && /^(correct|partial|wrong)$/.test(r.verdict)) res={verdict:r.verdict,say:String(r.say||'')}; }
+    catch(e){ $('voiceInfo').textContent='Claude marking unavailable ('+e.message+'). Using key-word marking.'; }
+  }
+  if(!res){ const need=q.p?0.6:1; res={verdict: score>=need?'correct':score>0?'partial':'wrong', say:''}; }
+  if(g!==S.gen) return;
+  verdict(res);
+}
+function gradePrompt(q,ans){
+  return `You are grading a spoken answer in a GMDSS / marine VHF radio (SRC, short range certificate) exam drill. The answer came through speech-to-text while the person is driving, so expect mis-transcriptions: "may day" = MAYDAY, "pan pan", "security" = SECURITE, "silence"/"see lonce" = SEELONCE, numbers spoken as words or digit by digit ("one six" = 16), "oh" = zero. They may end with the radio word "over" as a sign-off; ignore it unless the question is about procedure words.
+
+Question: ${q.q}
+Reference answer (from their course manual): ${q.a}
+Spoken answer: "${ans}"
+
+${q.p ? 'This is a "recite the radio call" question. Count it correct if the key parts are there in a sensible order: the right prefix word(s) with the right repetitions, the station called, "this is" plus identification, the essential content, and the right ending word (Over or Out). Positions, MMSI digits and small wording differences do not matter unless the question gives them. Partial if one or two key parts are missing or out of order.' : 'Count it correct if it shows they know the reference answer: accept synonyms, paraphrases and extra correct detail. For list questions, naming the number of items asked for (or most of the list) is correct. Partial if it is incomplete but on the right track. Wrong if it contradicts the reference or misses the point.'}
+
+Reply with only JSON: {"verdict":"correct"|"partial"|"wrong","say":"text to read aloud"}
+"say": if correct, either "" or one short related fact from the reference (max 15 words). If partial or wrong, briefly say what was missing or wrong and give the correct answer in plain words (max 35 words). Plain spoken English, no markdown, no symbols.`;
+}
+async function verdict(res){
+  const g=++S.gen; Rec.stop();
+  const q=S.cur, v=res.verdict, ok=v==='correct';
+  if(ok){ S.right++; saved.missed=saved.missed.filter(id=>id!==q.id); }
+  else {
+    S.wrong++;
+    if(!S.retry.some(r=>r.q.id===q.id)) S.retry.push({q, due:S.asked+3+Math.floor(Math.random()*3)});
+    if(!q.id.startsWith('f') && !saved.missed.includes(q.id)) saved.missed.push(q.id);
+  }
+  saved.total.asked++; if(ok) saved.total.right++; LS.set('gmdss-drive-v1',saved);
+  renderCounts();
+  const vb=$('verdict'); vb.hidden=false; vb.dataset.v = ok?'correct':(v==='partial'?'partial':'wrong');
+  $('vHead').textContent = ok?'Correct':v==='partial'?'Partly right':v==='skip'?'Skipped':'Not quite';
+  $('vText').textContent = ok ? (res.say || q.a) : ((res.say ? res.say+'\n\n' : '') + 'Answer: ' + q.a);
+  setMode('speaking');
+  ok ? cue.right() : cue.wrong();
+  await sleep(450);
+  let line;
+  if(ok) line='Correct. '+(res.say||'');
+  else {
+    const lead = v==='skip' ? 'The answer is: ' : (v==='partial' ? 'Partly right. ' : 'Not quite. ');
+    const body = v==='skip' ? q.a : (res.say || ('The answer is: ' + q.a));
+    const model = q.p && v!=='skip' ? ' Here is the model call. ' + q.a : '';
+    line = lead + body + model + ' I\'ll ask you that one again later.';
+  }
+  await speak(line);
+  if(g!==S.gen) return;
+  await sleep(600);
+  if(g!==S.gen) return;
+  nextQuestion();
+}
+
+/* ---------- fresh questions written by Claude from the notes ---------- */
+async function fetchFresh(){
+  if(S.freshBusy || !apiKey()) return; S.freshBusy=true;
+  try{
+    const start=Math.floor(Math.random()*NOTES.length);
+    let chunk=''; for(let i=0;i<NOTES.length && chunk.length<5500;i++) chunk+=NOTES[(start+i)%NOTES.length]+'\n\n';
+    const topicLine = S.topic==='all'?'' : `Focus on: ${$('topic').selectedOptions[0].text}.\n`;
+    const arr=await askClaude(`You write quiz questions for someone drilling for the SRC (GMDSS short range certificate, marine VHF) exam by voice while driving. Each question is read aloud by text-to-speech and answered out loud, so:
+- one fact per question, answerable in a few spoken words (a number, a channel, a term, a short phrase)
+- no multiple choice, no "which of the following", no tables or symbols
+- base every question strictly on the course notes below and use their figures, even where other sources differ
+${topicLine}Write 6 varied questions. Don't repeat these recent ones:
+${S.recent.slice(-20).map(x=>'- '+x).join('\n')}
+
+Course notes:
+<<<
+${chunk}
+>>>
+
+Reply with only a JSON array: [{"q":"question","a":"short correct answer, as it should be read aloud","k":"keys"}]
+"k": what a correct spoken answer must contain, lowercase, digits as numerals. Separate required parts with "|" and alternatives with "/". Example: "16" or "pan pan/panpan" or "406|121".`, 1500, 40000);
+    if(Array.isArray(arr)) arr.forEach((x,i)=>{ if(x&&typeof x.q==='string'&&typeof x.a==='string'&&x.q.length<240) S.fresh.push({id:'f'+Date.now()+i,t:'fresh',q:x.q,a:x.a,k:Array.isArray(x.k)?x.k.join('|'):String(x.k||''),p:false}); });
+  }catch(e){}
+  S.freshBusy=false;
+}
+
+/* ---------- pause / resume (keeps listening for "continue") ---------- */
+async function pause(msg){
+  const g=++S.gen; Rec.stop(); setMode('paused');
+  await speak(msg || 'Paused. Say continue when you\'re ready.');
+  if(g!==S.gen || S.typed) return;
+  Rec.start((fin,interim)=>{
+    if(g!==S.gen) return;
+    if(/\b(continue|resume|carry on|go on|start|ready|go ahead|unpause)\b/i.test(fin+' '+interim)) resume();
+  }, ()=>{ if(g===S.gen) Rec.restart(); });
+}
+function resume(){ if(S.mode!=='paused') return; S.noAnsCount=0; ask(false); }
+
+/* ---------- start ---------- */
+let wakeLock=null;
+async function keepAwake(){ try{ wakeLock=await navigator.wakeLock?.request('screen'); }catch(e){} }
+document.addEventListener('visibilitychange',()=>{
+  if(document.visibilityState==='visible' && S.mode!=='idle'){ keepAwake(); if(S.mode==='listening'||S.mode==='paused') { S.mode==='paused' ? pause(' ') : ask(true); } }
+});
+
+$('startBtn').addEventListener('click', async ()=>{
+  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); ac.resume(); }catch(e){}
+  if('speechSynthesis' in window){ const u=new SpeechSynthesisUtterance(' '); u.volume=0; speechSynthesis.speak(u); }
+  LS.set('gdq-key',apiKey()); updateKeyState();
+  S.topic=$('topic').value; S.queue=[]; S.retry=[]; S.fresh=[]; S.asked=0; S.right=0; S.wrong=0; S.cur=null;
+  saved.missed.map(id=>BANK.find(b=>b.id===id)).filter(Boolean).filter(q=>S.topic==='all'||q.t===S.topic).slice(0,12).forEach((q,i)=>S.retry.push({q,due:2+i*3}));
+  $('setup').hidden=true; $('quiz').hidden=false; $('qText').textContent='Starting…'; setMode('speaking','Starting');
+  keepAwake();
+  S.typed=!SR;
+  if(!SR){ $('typed').hidden=false; $('heard').dataset.hint='Type your answer below.'; $('voiceInfo').textContent='This browser has no speech recognition. Use Chrome for voice answers.'; }
+  else {
+    $('voiceInfo').textContent = apiKey() ? 'Voice answers · Claude marking on' : 'Voice answers · key-word marking';
+    // ask for the microphone once, up front
+    try{ const s=await navigator.mediaDevices.getUserMedia({audio:true}); s.getTracks().forEach(t=>t.stop()); }
+    catch(e){ if(e?.name==='NotAllowedError') micBlocked(); }
+  }
+  if(useFresh()) fetchFresh();
+  await speak(S.typed ? 'Quiz starting.' : 'Quiz starting. Answer after the beep.');
+  nextQuestion();
+});
+
+/* ---------- buttons ---------- */
+$('againBtn').onclick=()=>{ if(S.cur && S.mode!=='grading'){ speakToken++; ask(true); } };
+$('skipBtn').onclick=()=>{ if(S.cur && (S.mode==='listening'||S.mode==='speaking')){ speakToken++; try{speechSynthesis.cancel();}catch(e){} verdict({verdict:'skip'}); } };
+$('pauseBtn').onclick=()=>{ S.mode==='paused' ? resume() : pause(); };
+$('typed').addEventListener('submit',e=>{ e.preventDefault(); const v=$('typedIn').value.trim(); if(!v||S.mode!=='listening') return; $('typedIn').value=''; S.buffer=v; renderHeard(); finish(S.gen); });
+$('endBtn').onclick=()=>{
+  S.gen++; Rec.stop(); speakToken++; try{speechSynthesis.cancel();}catch(e){}
+  S.mode='idle'; try{ wakeLock?.release(); }catch(e){}
+  $('quiz').hidden=true; $('setup').hidden=false; showRecord();
+};
+function showRecord(){
+  const r=$('record'); const t=saved.total;
+  if(!t.asked){ r.hidden=true; return; }
+  r.hidden=false; r.innerHTML='';
+  [['Answered',t.asked],['Correct',Math.round(100*t.right/t.asked)+'%'],['To revisit',saved.missed.length]].forEach(([l,v])=>{ const s=document.createElement('span'); s.textContent=l+' '; const b=document.createElement('b'); b.textContent=v; s.append(b); r.append(s); });
+}
+showRecord();
+
+if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+</script>
+</body>
+</html>
