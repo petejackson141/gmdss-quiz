@@ -91,6 +91,11 @@ select,input[type=text]{background:var(--panel);color:var(--fg);border:1px solid
 .smart #keyState{color:var(--muted);font-weight:400}
 .tag{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 6px;margin-left:auto;white-space:nowrap}
 input[type=password]{background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:12px;font:inherit;width:100%;box-sizing:border-box}
+.ctl.wide{grid-column:1/-1}
+.ctl.ok{background:var(--ok);color:#06210f;border-color:transparent;min-height:84px;font-size:26px}
+.ctl.ok small{color:#06210f;opacity:.8}
+.controls{grid-auto-flow:row dense}
+.controls .ctl.ok{order:-1}
 </style>
 <style>body{margin:0} .wrap{padding-top:max(12px,env(safe-area-inset-top))}</style>
 </head>
@@ -104,6 +109,7 @@ input[type=password]{background:var(--panel2);color:var(--fg);border:1px solid v
     <li><b>Say again</b><span>Hear the question again.</span></li>
     <li><b>Skip</b><span>Hear the answer. It comes back later.</span></li>
     <li><b>Pause</b><span>Stops asking. Say <strong>“continue”</strong> to carry on.</span></li>
+    <li><b>I was right</b><span>Marked wrong but you were right? Say it straight after, or tap the green button.</span></li>
   </ul>
   <div class="settings">
     <div class="field"><label for="topic">Topics</label>
@@ -150,6 +156,7 @@ input[type=password]{background:var(--panel2);color:var(--fg);border:1px solid v
     <button class="ctl" id="againBtn">Say again<small>“say again”</small></button>
     <button class="ctl main" id="pauseBtn">Pause<small>“pause”</small></button>
     <button class="ctl" id="skipBtn">Skip<small>“skip”</small></button>
+    <button class="ctl ok wide" id="rightBtn" hidden>I was right ✓<small>marks your last answer correct · or say “I was right”</small></button>
   </div>
   <div class="foot"><span id="voiceInfo"></span><button class="link" id="endBtn">End session</button></div>
 </div>
@@ -554,15 +561,17 @@ const Rec = {
   _go(){
     if(!this.want) return;
     const r=new SR(); this.r=r;
-    r.lang='en-US'; r.continuous=false; r.interimResults=true; r.maxAlternatives=1;
-    let got='';
+    r.lang='en-US'; r.continuous=false; r.interimResults=true; r.maxAlternatives=5;
+    let got='', alts=[];
     r.onresult=e=>{
-      let fin='', interim='';
-      for(let i=0;i<e.results.length;i++){ const t=e.results[i][0].transcript; if(e.results[i].isFinal) fin+=t; else interim+=t; }
-      got=fin; this.onText?.(fin, interim);
+      let fin='', interim=''; let finals=[];
+      for(let i=0;i<e.results.length;i++){ const t=e.results[i][0].transcript; if(e.results[i].isFinal){ fin+=t; finals.push(e.results[i]); } else interim+=t; }
+      got=fin;
+      if(finals.length===1){ alts=[]; for(let j=0;j<finals[0].length;j++) alts.push(finals[0][j].transcript); } else alts=[fin];
+      this.onText?.(fin, interim);
     };
     r.onerror=e=>{ this.lastError=e.error; };
-    r.onend=()=>{ if(this.r!==r) return; this.r=null; if(this.want) this.onEnd?.(got, this.lastError); this.lastError=''; };
+    r.onend=()=>{ if(this.r!==r) return; this.r=null; if(this.want) this.onEnd?.(got, this.lastError, alts); this.lastError=''; };
     try{ r.start(); }catch(e){ setTimeout(()=>this._go(),300); }
   },
   restart(){ if(this.want) setTimeout(()=>this._go(),120); },
@@ -571,7 +580,7 @@ const Rec = {
 
 /* ---------- state ---------- */
 const S = { mode:'idle', gen:0, cur:null, src:'bank', queue:[], retry:[], fresh:[], freshBusy:false, recent:[], asked:0, right:0, wrong:0,
-  buffer:'', openedAt:0, lastSpeechAt:0, noAnsCount:0, typed:false, topic:'all' };
+  buffer:'', alts:[], last:null, openedAt:0, lastSpeechAt:0, noAnsCount:0, typed:false, topic:'all' };
 const saved = LS.get('gmdss-drive-v1',{}); saved.missed=saved.missed||[]; saved.total=saved.total||{asked:0,right:0};
 
 function setMode(m, label){
@@ -621,14 +630,18 @@ async function ask(again){
   openListening(g);
 }
 function openListening(g){
-  setMode('listening'); S.openedAt=Date.now(); S.lastSpeechAt=0; S.buffer=''; renderHeard();
+  setMode('listening'); S.openedAt=Date.now(); S.lastSpeechAt=0; S.buffer=''; S.alts=[]; renderHeard();
   if(S.typed){ setTimeout(()=>$('typedIn').focus(),50); return; }
   Rec.start(
     (fin, interim)=>{ if(g!==S.gen) return; S.lastSpeechAt=Date.now(); renderHeard((fin+' '+interim).trim()); },
-    (got, err)=>{
+    (got, err, alts)=>{
       if(g!==S.gen) return;
       if(err==='not-allowed'||err==='service-not-allowed'){ micBlocked(); return; }
-      if(got.trim()){ S.buffer=(S.buffer+' '+got).replace(/\s+/g,' ').trim(); S.lastSpeechAt=Date.now(); renderHeard(); }
+      if(got.trim()){
+        const before=S.buffer;
+        S.alts=(alts&&alts.length?alts:[got]).map(a=>(before+' '+a).replace(/\s+/g,' ').trim());
+        S.buffer=(before+' '+got).replace(/\s+/g,' ').trim(); S.lastSpeechAt=Date.now(); renderHeard();
+      }
       const c=S.buffer;
       // short answers end at the first pause; recited calls end with "over" or a long pause
       if(c && (/\bover[\s.!?,]*$/i.test(c) || !S.cur.p || Date.now()-S.lastSpeechAt>3500)) return finish(g);
@@ -651,6 +664,7 @@ const CMD = {
   again:/^(say again|repeat|repeat (that|the question|please)|again|what was the question|come again|pardon)$/,
   skip:/^(skip|skip it|skip (this|that)( one| question)?|next|next question|pass)$/,
   pause:/^(pause|stop|wait|hold on|stop quiz|pause quiz|stand ?by)$/,
+  right:/^(i was right|i was correct|i'?m right|that was right|that was correct|i said that|mark (it |that )?(right|correct)|override)$/,
   dunno:/\b(i don'?t know|no idea|not sure|i give up|give up|no clue|don'?t remember|i forget|i forgot)\b/
 };
 function finish(g){
@@ -658,6 +672,7 @@ function finish(g){
   Rec.stop();
   const ans=S.buffer.trim(); S.noAnsCount=0;
   const c=ans.toLowerCase().replace(/[^a-z' ]/g,' ').replace(/\b(please|uh|um|er)\b/g,' ').replace(/\s+/g,' ').trim().replace(/\s*\bover$/,'').trim();
+  if(CMD.right.test(c)){ if(S.last){ overrideLast(); speakThen('Okay, I\'ve marked your last answer as correct.', ()=>ask(true)); return; } return ask(true); }
   if(CMD.again.test(c)) return ask(true);
   if(CMD.skip.test(c)) return verdict({verdict:'skip'});
   if(CMD.pause.test(c)) return pause();
@@ -668,23 +683,23 @@ function finish(g){
 /* ---------- grading ---------- */
 async function grade(ans){
   setMode('grading'); const g=S.gen;
-  const q=S.cur, score=keyScore(q,ans), short=ans.split(/\s+/).length<=14;
+  const q=S.cur, hearings=[...new Set([ans,...S.alts])], score=Math.max(...hearings.map(h=>keyScore(q,h))), short=ans.split(/\s+/).length<=14;
   let res=null;
   if(!q.p && score===1 && short) res={verdict:'correct',say:''};
   else if(apiKey()){
-    try{ const r=await askClaude(gradePrompt(q,ans),300); if(r && /^(correct|partial|wrong)$/.test(r.verdict)) res={verdict:r.verdict,say:String(r.say||'')}; }
+    try{ const r=await askClaude(gradePrompt(q,ans,hearings.slice(1)),300); if(r && /^(correct|partial|wrong)$/.test(r.verdict)) res={verdict:r.verdict,say:String(r.say||'')}; }
     catch(e){ $('voiceInfo').textContent='Claude marking unavailable ('+e.message+'). Using key-word marking.'; }
   }
   if(!res){ const need=q.p?0.6:1; res={verdict: score>=need?'correct':score>0?'partial':'wrong', say:''}; }
   if(g!==S.gen) return;
   verdict(res);
 }
-function gradePrompt(q,ans){
+function gradePrompt(q,ans,others=[]){
   return `You are grading a spoken answer in a GMDSS / marine VHF radio (SRC, short range certificate) exam drill. The answer came through speech-to-text while the person is driving, so expect mis-transcriptions: "may day" = MAYDAY, "pan pan", "security" = SECURITE, "silence"/"see lonce" = SEELONCE, numbers spoken as words or digit by digit ("one six" = 16), "oh" = zero. They may end with the radio word "over" as a sign-off; ignore it unless the question is about procedure words.
 
 Question: ${q.q}
 Reference answer (from their course manual): ${q.a}
-Spoken answer: "${ans}"
+Spoken answer: "${ans}"${others.length ? '\nOther ways the speech recogniser heard it: ' + others.map(o=>'"'+o+'"').join(', ') + '. If any of these is right, count it as right.' : ''}
 
 ${q.p ? 'This is a "recite the radio call" question. Count it correct if the key parts are there in a sensible order: the right prefix word(s) with the right repetitions, the station called, "this is" plus identification, the essential content, and the right ending word (Over or Out). Positions, MMSI digits and small wording differences do not matter unless the question gives them. Partial if one or two key parts are missing or out of order.' : 'Count it correct if it shows they know the reference answer: accept synonyms, paraphrases and extra correct detail. For list questions, naming the number of items asked for (or most of the list) is correct. Partial if it is incomplete but on the right track. Wrong if it contradicts the reference or misses the point.'}
 
@@ -694,6 +709,7 @@ Reply with only JSON: {"verdict":"correct"|"partial"|"wrong","say":"text to read
 async function verdict(res){
   const g=++S.gen; Rec.stop();
   const q=S.cur, v=res.verdict, ok=v==='correct';
+  S.last = (!ok && v!=='skip') ? {q} : null; $('rightBtn').hidden = !S.last;
   if(ok){ S.right++; saved.missed=saved.missed.filter(id=>id!==q.id); }
   else {
     S.wrong++;
@@ -715,13 +731,47 @@ async function verdict(res){
     const body = v==='skip' ? q.a : (res.say || ('The answer is: ' + q.a));
     const model = q.p && v!=='skip' ? ' Here is the model call. ' + q.a : '';
     line = lead + body + model + ' I\'ll ask you that one again later.';
+    if(S.last && !S.typed) line += ' If you were right, say: I was right.';
   }
   await speak(line);
   if(g!==S.gen) return;
+  if(S.last && !S.typed){
+    const heard = await listenForOverride(g);
+    if(g!==S.gen) return;
+    if(heard){ overrideLast(); await speak('Okay, marked as correct.'); if(g!==S.gen) return; }
+  }
   await sleep(600);
   if(g!==S.gen) return;
   nextQuestion();
 }
+
+/* ---------- override a wrong mark ---------- */
+const OVERRIDE_RE=/\b(i was right|i was correct|i'?m right|that was right|that was correct|that's right|mark (it |that )?(right|correct)|override|correct)\b/i;
+function listenForOverride(g){
+  return new Promise(res=>{
+    setMode('listening','Say “I was right”');
+    let done=false; const end=v=>{ if(done) return; done=true; clearTimeout(tm); Rec.stop(); res(v); };
+    const tm=setTimeout(()=>end(false), 4000);
+    Rec.start((fin,interim)=>{ if(g!==S.gen) return end(false); if(OVERRIDE_RE.test(fin+' '+interim)) end(true); }, ()=>{ if(!done) Rec.restart(); });
+  });
+}
+function overrideLast(){
+  const L=S.last; if(!L) return false;
+  S.last=null; $('rightBtn').hidden=true;
+  S.wrong=Math.max(0,S.wrong-1); S.right++;
+  S.retry=S.retry.filter(r=>r.q.id!==L.q.id);
+  saved.missed=saved.missed.filter(id=>id!==L.q.id); saved.total.right++; LS.set('gmdss-drive-v1',saved);
+  renderCounts(); cue.right();
+  if(S.cur===L.q && !$('verdict').hidden){ $('verdict').dataset.v='correct'; $('vHead').textContent='Marked correct'; }
+  return true;
+}
+async function speakThen(text, then){ const g=++S.gen; Rec.stop(); setMode('speaking'); await speak(text); if(g===S.gen) then(); }
+$('rightBtn').onclick=()=>{
+  if(!S.last) return;
+  const inFeedback = S.cur===S.last.q && !$('verdict').hidden;
+  overrideLast();
+  if(inFeedback){ speakToken++; try{speechSynthesis.cancel();}catch(e){} speakThen('Okay, marked as correct.', nextQuestion); }
+};
 
 /* ---------- fresh questions written by Claude from the notes ---------- */
 async function fetchFresh(){
